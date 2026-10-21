@@ -1,0 +1,86 @@
+{
+  "name": "ma3madan-ppt",
+  "version": "0.1.0",
+  "description": "A presenter view for PowerPoint: your slides full screen on the projector, and on your laptop the next slide, notes, sections, a slide grid, a library of presentations and a phone remote.",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win portable nsis",
+    "icon": "electron build/make-icon.js",
+    "test:bridge": "node test/bridge.js",
+    "test": "node test/run-selftest.js",
+    "test:remote": "node test/run-selftest.js --remote"
+  },
+  "keywords": [
+    "electron",
+    "powerpoint",
+    "presenter-view",
+    "projector",
+    "church",
+    "remote"
+  ],
+  "author": {
+    "name": "Ma3madan PPT"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^38.8.6",
+    "electron-builder": "^26.15.3"
+  },
+  "productName": "Ma3madan PPT",
+  "build": {
+    "appId": "com.michaelsaad.ma3madan-ppt",
+    "productName": "Ma3madan PPT",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*"
+    ],
+    "asarUnpack": [
+      "src/ppt/host.js",
+      "src/ppt/win.ps1"
+    ],
+    "win": {
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "Ma3madan-PPT-Setup-${version}.${ext}",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Ma3madan PPT",
+      "differentialPackage": false
+    },
+    "portable": {
+      "artifactName": "Ma3madan-PPT-Portable-${version}.${ext}"
+    },
+    "fileAssociations": [
+      {
+        "ext": [
+          "pptx",
+          "ppt",
+          "ppsx",
+          "pps",
+          "pptm",
+          "ppsm"
+        ],
+        "name": "Ma3madan.Presentation",
+        "description": "Presentation",
+        "role": "Viewer"
+      }
+    ],
+    "copyright": "Public domain",
+    "electronLanguages": [
+      "en-US",
+      "ar"
+    ],
+    "compression": "maximum"
+  },
+  "homepage": "https://github.com/michaelsaad/ma3madan-ppt",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/michaelsaad/ma3madan-ppt.git"
+  }
+}

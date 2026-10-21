@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' file:; connect-src 'self' file: https://ma3madan-remote.pages.dev https://api.github.com; media-src mediastream: blob:; img-src 'self' file: data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<title>Ma3madan PPT</title>
+<link rel="stylesheet" href="control.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l13-7.5z" fill="currentColor"/></symbol>
+  <symbol id="i-next" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-prev" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-add" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.8" fill="currentColor"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/><circle cx="19" cy="12" r="1.8" fill="currentColor"/></symbol>
+  <symbol id="i-caret" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2" fill="none"/><path d="M12 11v6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="7.6" r="1.3" fill="currentColor"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><path d="M10.3 2.5h3.4l.6 2.7 1.5.9 2.6-.9 1.7 2.9-2.1 1.9v1.8l2.1 1.9-1.7 2.9-2.6-.9-1.5.9-.6 2.7h-3.4l-.6-2.7-1.5-.9-2.6.9-1.7-2.9 2.1-1.9v-1.8L3.9 8.1l1.7-2.9 2.6.9 1.5-.9z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8" fill="none"/></symbol>
+  <symbol id="i-sidebar" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="15" rx="2" stroke="currentColor" stroke-width="2" fill="none"/><path d="M9 4.5v15" stroke="currentColor" stroke-width="2"/></symbol>
+  <symbol id="i-black" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2" fill="currentColor"/><path d="M9 20.5h6M12 17v3.5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></symbol>
+  <symbol id="i-white" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2" stroke="currentColor" stroke-width="2" fill="none"/><path d="M9 20.5h6M12 17v3.5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3.5" width="7.5" height="7.5" rx="1.5" fill="currentColor"/><rect x="13.5" y="3.5" width="7.5" height="7.5" rx="1.5" fill="currentColor"/><rect x="3" y="13" width="7.5" height="7.5" rx="1.5" fill="currentColor"/><rect x="13.5" y="13" width="7.5" height="7.5" rx="1.5" fill="currentColor"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2" fill="currentColor"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2h8.5A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z" stroke="currentColor" stroke-width="2" fill="none"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="4" cy="6" r="1.4" fill="currentColor"/><circle cx="4" cy="12" r="1.4" fill="currentColor"/><circle cx="4" cy="18" r="1.4" fill="currentColor"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="2" fill="none"/><path d="M12 7.5V12l3 2" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><path d="M6 4h4.5v16H6zM13.5 4H18v16h-4.5z" fill="currentColor"/></symbol>
+  <symbol id="i-reset" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.4-5.7M4 4v4.5h4.5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-screens" viewBox="0 0 24 24"><rect x="2.5" y="4" width="12" height="9" rx="1.5" stroke="currentColor" stroke-width="2" fill="none"/><rect x="9.5" y="9" width="12" height="9" rx="1.5" stroke="currentColor" stroke-width="2" fill="none"/><path d="M15.5 18v2.5M12.5 21h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6" stroke="currentColor" stroke-width="2" fill="none"/><path d="M15 15l5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-recent" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.4-5.7M4 4v4.5h4.5M12 8v4.5l3 1.8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-text-up" viewBox="0 0 24 24"><path d="M3 19l5-14 5 14M5 14h6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M18 8v8M14 12h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-text-down" viewBox="0 0 24 24"><path d="M3 19l5-14 5 14M5 14h6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 12h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-pp" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2" stroke="currentColor" stroke-width="2" fill="none"/><path d="M8 21h8M12 17v4M8.5 13V8h2.2a1.8 1.8 0 0 1 0 3.6H8.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><rect x="6.5" y="2.5" width="11" height="19" rx="2.5" stroke="currentColor" stroke-width="2" fill="none"/><path d="M10.5 18.5h3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2" stroke="currentColor" stroke-width="2" fill="none"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+</svg>
+
+<header>
+  <img class="logo" src="assets/app-64.png" alt="">
+  <span class="app-name" data-i18n="appName">Ma3madan PPT</span>
+  <button id="aboutBtn" class="icon ghost" data-i18n-title="about"><svg><use href="#i-info"/></svg></button>
+  <button id="updateBtn" class="update" hidden><span data-i18n="update">Update</span></button>
+  <div class="tabs" id="tabs"></div>
+  <span class="grow"></span>
+  <button id="remoteBtn" class="icon ghost" data-i18n-title="remoteTitle"><svg><use href="#i-phone"/></svg></button>
+  <button id="keysBtn" class="icon ghost" data-i18n-title="shortcuts"><svg><use href="#i-keyboard"/></svg></button>
+  <button id="settingsBtn" class="icon ghost" data-i18n-title="settings"><svg><use href="#i-gear"/></svg></button>
+  <button id="sidebarBtn" class="icon ghost" data-i18n-title="tSidebar"><svg><use href="#i-sidebar"/></svg></button>
+</header>
+
+<div id="layout">
+  <aside id="side">
+    <div class="side-top">
+      <button id="openBtn" class="primary wide"><svg><use href="#i-add"/></svg><span data-i18n="open">Open presentation</span></button>
+      <label class="search"><svg><use href="#i-search"/></svg><input id="search" type="text" data-i18n-ph="search" placeholder="Search"></label>
+    </div>
+    <div class="side-scroll" id="library"></div>
+    <div class="side-bottom">
+      <button id="newListBtn" class="small ghost wide"><svg><use href="#i-add"/></svg><span data-i18n="newList">New list</span></button>
+    </div>
+    <div id="sideGrip" data-i18n-title="tSideGrip"></div>
+  </aside>
+
+  <main id="main">
+    <!-- No presentation open -->
+    <section id="empty" class="empty">
+      <img src="assets/app-128.png" alt="">
+      <h2 data-i18n="emptyTitle">Open a presentation</h2>
+      <p class="muted" data-i18n="emptyText">Pick one from the list, click Open, or drop a PowerPoint file here.</p>
+    </section>
+
+    <!-- A presentation, not showing: sections and slides -->
+    <section id="deckView" hidden>
+      <div class="deck-bar">
+        <div class="deck-title"><b id="deckName"></b><span id="deckMeta" class="muted"></span></div>
+        <span class="grow"></span>
+        <label class="field size" data-i18n-title="tSize"><svg><use href="#i-grid"/></svg><input id="gridSize" type="range" min="140" max="420" step="10"></label>
+        <button id="showOnBtn" class="ghost"><svg><use href="#i-screens"/></svg><span id="showOnLabel"></span><svg class="caret"><use href="#i-caret"/></svg></button>
+        <button id="startHereBtn"><svg><use href="#i-play"/></svg><span data-i18n="fromSelected">From this slide</span></button>
+        <button id="startBtn" class="primary"><svg><use href="#i-play"/></svg><span data-i18n="fromStart">From the beginning</span><kbd>F5</kbd></button>
+      </div>
+      <div id="grid" class="grid-scroll"></div>
+    </section>
+
+    <!-- The show is running: presenter view -->
+    <section id="presenter" hidden>
+      <div class="pv-top">
+        <div class="timer"><svg><use href="#i-clock"/></svg><b id="elapsed">0:00</b>
+          <button id="timerPause" class="icon ghost" data-i18n-title="tTimerPause"><svg><use href="#i-pause"/></svg></button>
+          <button id="timerReset" class="icon ghost" data-i18n-title="tTimerReset"><svg><use href="#i-reset"/></svg></button>
+        </div>
+        <span id="clock" class="clock"></span>
+        <span class="grow"></span>
+        <span id="pvDeck" class="muted pv-deck"></span>
+      </div>
+      <div class="pv-body">
+        <div class="pv-main">
+          <div id="current" class="slide-box current" data-i18n-title="tClickThrough">
+            <video id="live" autoplay muted playsinline></video>
+            <img id="currentImg" alt="">
+            <div id="screenBadge" class="screen-badge" hidden></div>
+          </div>
+          <div class="pv-controls">
+            <button id="prevBtn" class="big" data-i18n-title="tPrev"><svg><use href="#i-prev"/></svg></button>
+            <div class="counter"><input id="slideNo" type="text" inputmode="numeric"><span id="slideCount"></span></div>
+            <button id="nextBtn" class="big primary" data-i18n-title="tNext"><svg><use href="#i-next"/></svg></button>
+            <span class="sep"></span>
+            <button id="gridBtn" data-i18n-title="tGrid"><svg><use href="#i-grid"/></svg><span data-i18n="allSlides">All slides</span><kbd>G</kbd></button>
+            <button id="blackBtn" data-i18n-title="tBlack"><svg><use href="#i-black"/></svg><kbd>B</kbd></button>
+            <button id="whiteBtn" data-i18n-title="tWhite"><svg><use href="#i-white"/></svg><kbd>W</kbd></button>
+            <span class="grow"></span>
+            <button id="endBtn" class="danger-btn"><svg><use href="#i-stop"/></svg><span data-i18n="endShow">End show</span><kbd>Esc</kbd></button>
+          </div>
+          <div id="strip" class="strip"></div>
+        </div>
+        <div class="pv-side">
+          <div class="pv-label"><span data-i18n="nextSlide">Next</span><span id="nextInfo" class="muted"></span></div>
+          <div id="nextBox" class="slide-box next"><img id="nextImg" alt=""><div id="nextEnd" class="end-note" hidden data-i18n="endOfShow">End of the show</div></div>
+          <div class="pv-label"><span data-i18n="notes">Notes</span>
+            <span class="grow"></span>
+            <button id="notesDown" class="icon ghost" data-i18n-title="tNotesSmaller"><svg><use href="#i-text-down"/></svg></button>
+            <button id="notesUp" class="icon ghost" data-i18n-title="tNotesBigger"><svg><use href="#i-text-up"/></svg></button>
+          </div>
+          <div id="notes" class="notes"></div>
+        </div>
+      </div>
+      <!-- "All slides" while presenting -->
+      <div id="pvGrid" class="pv-grid" hidden>
+        <div class="pv-grid-bar"><b data-i18n="allSlides">All slides</b><span class="grow"></span><button id="pvGridClose" class="ghost"><svg><use href="#i-x"/></svg><kbd>Esc</kbd></button></div>
+        <div id="pvGridBody" class="grid-scroll"></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="dropZone" class="drop-zone"><div data-i18n="dropHere">Drop PowerPoint files here</div></div>
+<div id="menu" class="menu" hidden></div>
+<div id="toast" class="toast" hidden></div>
+<div id="modal" class="modal" hidden><div class="modal-card" id="modalCard"></div></div>
+
+<script src="i18n.js"></script>
+<script src="control.js"></script>
+<script src="link.js"></script>
+<script src="link-host.js"></script>
+<script src="remote.js"></script>
+</body>
+</html>
