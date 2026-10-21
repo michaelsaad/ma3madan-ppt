@@ -121,7 +121,7 @@ npm start
 
 ### Releasing
 
-Bump `version` in `package.json`, commit, and push a matching tag (`git tag v1.2.0 && git push origin v1.2.0`). The Release workflow builds the installer and the portable `.exe` and attaches them to a draft release.
+Bump `version` in `package.json` and commit. `npm run dist` builds the installer and the portable `.exe` into `dist/`; attach both to a GitHub release tagged `vX.Y.Z`. The app's updater finds the newest release and checks the installer against the SHA-256 GitHub shows for it.
 
 ## Privacy
 
