@@ -30,6 +30,8 @@ contextBridge.exposeInMainWorld('api', {
   showClick: (fx, fy) => ipcRenderer.invoke('show-click', fx, fy),
   showState: () => ipcRenderer.invoke('show-state'),
   onShowState: fn => on('show-state', fn),
+  onDeckOpened: fn => on('deck-opened', fn),
+  onNotice: fn => on('notice', fn),
 
   // phone remote
   qrSvg: text => ipcRenderer.invoke('qr-svg', text),

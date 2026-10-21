@@ -75,6 +75,23 @@ module.exports = async function selftest(win, { app, ppt }) {
     await js('api.showClick(0.74, 0.78)');
     await until('show.slide === 5', 6000);
     log('link to a slide ok');
+
+    // A link to another presentation (slide 6 → test2.pptx): the app follows it, then comes back.
+    await js('api.showCmd({ action: "go", n: 6 })');
+    await until('show.slide === 6');
+    await js('api.showClick(0.74, 0.78)');
+    await until('show.running && /test2\\.pptx$/i.test(show.path)', 15000);
+    await until('/test2\\.pptx$/i.test(active) && !document.getElementById("presenter").hidden', 10000);
+    assert.deepStrictEqual(await js('activeDeck().sections.map(s => s.name)'), ['Linked']);
+    assert.strictEqual(await js('open.length'), 2);
+    assert.strictEqual((await js('remoteState()')).deck.sections[0].name, 'Linked');
+    await shot('4b-linked');
+    log('followed the link to another presentation');
+    await js('cmd("last")');
+    await until('show.slide === 3');
+    await js('cmd("next")'); // past the end: back to the first presentation, where it was
+    await until('show.running && /test\\.pptx$/i.test(show.path) && show.slide === 6', 15000);
+    log('came back after it');
     log('click-through ok, state', await js('show.state'));
 
     await js('cmd("black")');

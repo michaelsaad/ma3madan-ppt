@@ -141,7 +141,7 @@ function remoteState() {
 // Slide pictures, asked for by id "<n>|<size>|<path>": small for the lists, big for the live slide.
 async function remoteThumb(id) {
   const [n, size, ...rest] = String(id).split('|');
-  return api.thumbData(rest.join('|'), Number(n), size === 'big' ? 800 : 240);
+  return api.thumbData(rest.join('|'), Number(n), size === 'big' ? 1280 : 320);
 }
 
 // The phone's buttons do what the same buttons here do.
@@ -171,6 +171,9 @@ async function remoteCommand(c) {
   }
   pushRemote();
 }
+
+// Closing the app takes this computer off the phones' "nearby" list right away.
+addEventListener('beforeunload', () => { if (LinkHost.isRunning()) LinkHost.stop(); });
 
 async function initRemote() {
   remoteOn = !!settings.remoteOn;

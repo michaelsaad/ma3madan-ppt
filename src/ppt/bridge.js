@@ -65,6 +65,7 @@ module.exports = {
   quit: closeApp => host.call('quit', closeApp),
   open: file => host.call('open', file),
   thumbs: (file, dir, w, h, from, to) => host.call('thumbs', file, dir, w, h, from, to),
+  exportOne: (file, n, out, w, h) => host.call('exportOne', file, n, out, w, h),
   close: file => host.call('close', file),
   start: (file, slide, windowed) => host.call('start', file, slide, windowed),
   end: () => host.call('end'),

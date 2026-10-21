@@ -77,7 +77,7 @@ function ask(title, value, okText) {
 }
 
 // ---------- library (side panel) ----------
-const saveLibrary = () => { api.saveLibrary(library); pushRemote(); };
+const saveLibrary = () => { api.saveLibrary(library); window.pushRemote?.(); };
 const recentOf = p => library.recents.find(r => same(r.path, p));
 const listsHolding = p => library.lists.filter(l => l.items.some(x => same(x, p)));
 const collapsedGroups = new Set(JSON.parse(localStorage.getItem('collapsedGroups') || '[]'));
@@ -487,9 +487,9 @@ $('timerPause').onclick = () => {
   else timerPausedAt = Date.now();
   $('timerPause').querySelector('use').setAttribute('href', timerPausedAt ? '#i-play' : '#i-pause');
   $('elapsed').parentElement.classList.toggle('paused', !!timerPausedAt);
-  pushRemote();
+  window.pushRemote?.();
 };
-$('timerReset').onclick = () => { timerStart = Date.now(); timerPaused = 0; if (timerPausedAt) timerPausedAt = Date.now(); pushRemote(); };
+$('timerReset').onclick = () => { timerStart = Date.now(); timerPaused = 0; if (timerPausedAt) timerPausedAt = Date.now(); window.pushRemote?.(); };
 
 // ---------- the show ----------
 async function startShow(from) {
@@ -506,6 +506,9 @@ async function startShow(from) {
 function onShow(s) {
   const was = show;
   show = s;
+  // The timer runs for the whole show, however it was started (here, the phone, PowerPoint).
+  if (s.running && !timerStart) { timerStart = Date.now(); timerPaused = 0; timerPausedAt = null; }
+  if (!s.running && was.running) timerStart = null;
   // The show moved to another open presentation (or one we haven't opened): follow it.
   if (s.running && s.path && !same(s.path, active)) {
     if (deckOf(s.path)) active = deckOf(s.path).path;
@@ -514,7 +517,7 @@ function onShow(s) {
   else setLive(null);
   if (was.running !== s.running || !same(was.path, s.path)) render();
   else { renderPresenter(); }
-  pushRemote();
+  window.pushRemote?.();
 }
 
 function render() {
@@ -528,7 +531,7 @@ function render() {
   renderLibrary();
   if (d && !live) renderDeck();
   if (live) { stripKey = ''; renderPresenter(); }
-  pushRemote();
+  window.pushRemote?.();
 }
 
 const cmd = action => api.showCmd({ action });
@@ -701,6 +704,14 @@ $('updateBtn').onclick = async () => {
 
 // ---------- events from main ----------
 api.onShowState(onShow);
+// A link in the slides opened another presentation: it joins the tabs, and the view follows the show.
+api.onDeckOpened(d => {
+  if (!d?.path) return;
+  if (!deckOf(d.path)) open.push(d);
+  if (show.running && same(show.path, d.path)) active = deckOf(d.path).path;
+  api.loadLibrary().then(lib => { library = lib; render(); });
+});
+api.onNotice(n => toast(t(n.key, n)));
 api.onThumbs(({ path: p, ready }) => {
   const d = deckOf(p);
   if (!d) return;
@@ -708,13 +719,14 @@ api.onThumbs(({ path: p, ready }) => {
   if (ready >= 1) rememberThumb(d);
   if (same(p, active)) { if (isLive(d)) { stripKey = ''; renderPresenter(); } else renderDeck(); }
   if (ready === 1 || ready === d.slides.length) { renderLibrary(); }
-  pushRemote();
+  window.pushRemote?.();
 });
 api.onDisplays(info => { displays = info; if (activeDeck() && !isLive(activeDeck())) $('showOnLabel').textContent = showOnText(); });
 api.onOpenFiles(openFiles);
 
 // ---------- start ----------
-(async () => {
+// Start once every script on the page has loaded (remote.js comes after this file).
+addEventListener('DOMContentLoaded', async () => {
   settings = await api.getSettings();
   applyLang(settings.lang || 'en');
   if (settings.sidebarHidden) document.body.classList.add('side-hidden');
@@ -730,4 +742,4 @@ api.onOpenFiles(openFiles);
   const s = await api.showState();
   if (s.running) onShow(s);
   initRemote();
-})();
+});

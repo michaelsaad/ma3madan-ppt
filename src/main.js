@@ -108,10 +108,16 @@ function thumbsDirFor(file) {
   return path.join(thumbsRoot(), h);
 }
 
-async function openDeck(file) {
+const openingDecks = new Map(); // path → promise, so the same file is read once
+function openDeck(file) {
+  const k = String(file).toLowerCase();
+  if (decks.has(k)) return Promise.resolve(deckPayload(decks.get(k)));
+  if (!openingDecks.has(k)) openingDecks.set(k, readDeck(file).finally(() => openingDecks.delete(k)));
+  return openingDecks.get(k);
+}
+async function readDeck(file) {
   if (!fs.existsSync(file)) throw new Error('missing');
   const k = file.toLowerCase();
-  if (decks.has(k)) return deckPayload(decks.get(k));
   const info = await ppt.open(file);
   const dir = thumbsDirFor(file);
   const d = { info, dir, ready: 0 };
@@ -169,7 +175,24 @@ async function poll() {
   let s;
   try { s = await ppt.state(); } catch (e) { s = { running: false, error: e.message }; }
   const changed = JSON.stringify(s) !== JSON.stringify(show);
-  if (!s.running) { showHwnd = null; showRect = null; }
+  // Another presentation took over the screen (a link in the slides): its window is a new one.
+  if (!s.running || String(s.path || '').toLowerCase() !== String(show.path || '').toLowerCase()) { showHwnd = null; showRect = null; }
+  // A presentation this app hasn't opened (PowerPoint followed a link by itself): open it here
+  // too, so the presenter view and the phone show its slides, notes and sections.
+  if (s.running && s.path && !decks.has(s.path.toLowerCase()) && !following.has(s.path.toLowerCase())) {
+    const k = s.path.toLowerCase();
+    following.add(k);
+    openDeck(s.path).then(d => controlWin?.webContents.send('deck-opened', d)).catch(e => console.warn('follow', e.message)).finally(() => following.delete(k));
+  }
+  // The linked presentation's show ended: back to where we were, like PowerPoint.
+  // (Its end is reached when it closes, or when it gets to the "end of slide show" screen.)
+  if ((!s.running || s.state === 5) && show.running && returnTo.length && !endingAll && !switching) {
+    const back = returnTo.pop();
+    show = s;
+    startShow(back.path, back.slide, { keepReturn: true }).catch(e => console.warn('return', e.message));
+    return;
+  }
+  if (!s.running && !switching) { returnTo.length = 0; endingAll = false; }
   // A show started some other way (in PowerPoint itself): find its window for the live view.
   if (s.running && !showHwnd && !findingShow) {
     findingShow = true;
@@ -184,10 +207,29 @@ async function poll() {
   if (s.running) pollTimer = setTimeout(poll, 200);
 }
 
-async function startShow(file, slide) {
-  await openDeck(file);
+// Presentations to come back to: a link in the slides started another one's show.
+const returnTo = []; // [{ path, slide }]
+const following = new Set();
+let endingAll = false;
+let switching = 0; // a show is being started: its old one ending isn't the linked one ending
+
+async function startShow(file, slide, opts = {}) {
+  switching++;
+  try { return await startShowNow(file, slide, opts); } finally { switching--; }
+}
+async function startShowNow(file, slide, opts) {
+  if (!opts.keepReturn) returnTo.length = 0;
   const target = showTarget();
-  await ppt.start(file, slide || 1, !!target.windowed);
+  if (decks.has(file.toLowerCase())) {
+    await ppt.start(file, slide || 1, !!target.windowed);
+  } else {
+    // Not read yet (a link to another presentation): the show starts first, at once, and its
+    // slides, notes and sections are read right after.
+    if (!fs.existsSync(file)) throw new Error('missing');
+    await ppt.start(file, slide || 1, !!target.windowed);
+    openDeck(file).then(d => controlWin?.webContents.send('deck-opened', d)).catch(e => console.warn('open', e.message));
+  }
+  if (opts.notify && decks.has(file.toLowerCase())) controlWin?.webContents.send('deck-opened', deckPayload(decks.get(file.toLowerCase())));
   try {
     const found = await ppt.findShow();
     showHwnd = found.hwnd;
@@ -216,7 +258,7 @@ async function showCommand(c) {
     case 'last': await ppt.go(show.count || 1); break;
     case 'black': await ppt.screen(3); break;
     case 'white': await ppt.screen(4); break;
-    case 'end': await ppt.end(); break;
+    case 'end': endingAll = true; returnTo.length = 0; await ppt.end(); break;
   }
   await poll();
   return show;
@@ -231,6 +273,13 @@ async function showClick(sx, sy) {
   const hit = await ppt.hit(sx, sy).catch(() => ({ done: false }));
   if (process.env.MP_SELFTEST) console.log('[hit]', JSON.stringify(hit));
   if (hit.done) { setTimeout(poll, 100); return; }
+  if (hit.file) {
+    // A link to another presentation: show it, and come back here when it ends.
+    if (!fs.existsSync(hit.file)) { controlWin?.webContents.send('notice', { key: 'linkMissing', name: path.basename(hit.file) }); return; }
+    returnTo.push({ path: show.path, slide: show.slide });
+    await startShow(hit.file, hit.slide || 1, { keepReturn: true, notify: true });
+    return;
+  }
   // Anything else (animation triggers, video buttons): a real click. The show window has the
   // screen's shape, with the slide letterboxed inside it.
   if (!showRect) { try { const f = await ppt.findShow(); showHwnd = f.hwnd; showRect = f.rect; } catch {} }
@@ -369,13 +418,28 @@ ipcMain.handle('qr-svg', (_e, text) => {
 });
 ipcMain.handle('host-name', () => require('os').hostname());
 // A slide's picture for the phone: a small JPEG as a data URL (it travels over the data channel).
-ipcMain.handle('thumb-data', (_e, file, n, width) => {
+ipcMain.handle('thumb-data', async (_e, file, n, width) => {
   const d = decks.get(String(file).toLowerCase());
   if (!d || !(n >= 1 && n <= d.ready)) return null;
-  const img = nativeImage.createFromPath(path.join(d.dir, `${n}.png`));
+  // Big ones (the phone's live slide) are made sharp, once per slide, at 1280 px.
+  let src = path.join(d.dir, `${n}.png`);
+  if (width > 480) {
+    const big = path.join(d.dir, `big-${n}.png`);
+    if (!fs.existsSync(big)) {
+      try { await ppt.exportOne(d.info.path, n, big, 1280, Math.round(1280 * d.info.height / d.info.width)); } catch (e) { console.warn('big slide', e.message); }
+    }
+    if (fs.existsSync(big)) src = big;
+  }
+  const img = nativeImage.createFromPath(src);
   if (img.isEmpty()) return null;
-  const w = Math.max(80, Math.min(960, width | 0 || 320));
-  return 'data:image/jpeg;base64,' + img.resize({ width: w, quality: 'good' }).toJPEG(w > 400 ? 78 : 70).toString('base64');
+  const w = Math.max(80, Math.min(1280, width | 0 || 320));
+  // One message on the phone's connection holds about 256 KB: busy slides get a lighter JPEG.
+  const small = img.resize({ width: w, quality: 'good' });
+  const qualities = w > 400 ? [80, 65, 50, 38] : [70, 50];
+  for (const q of qualities) {
+    const data = small.toJPEG(q).toString('base64');
+    if (data.length < 200000 || q === qualities[qualities.length - 1]) return 'data:image/jpeg;base64,' + data;
+  }
 });
 
 ipcMain.handle('update-check', async () => {
@@ -400,7 +464,7 @@ app.whenReady().then(() => {
   checkPowerPointRunning();
   createControl();
   if (process.env.MP_SELFTEST) controlWin.webContents.on('console-message', e => console.log('[page]', e.message));
-  if (process.env.MP_SELFTEST) require(process.env.MP_REMOTE_HOST ? '../test/remote-host' : '../test/selftest')(controlWin, { app, ppt });
+  if (process.env.MP_SELFTEST) require(process.env.MP_REMOTE_HOST ? '../test/remote-host' : process.env.MP_SHOTS ? '../test/readme-shots' : '../test/selftest')(controlWin, { app, ppt });
   screen.on('display-added', sendDisplays);
   screen.on('display-removed', sendDisplays);
   screen.on('display-metrics-changed', sendDisplays);

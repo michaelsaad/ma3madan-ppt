@@ -54,9 +54,18 @@ function deck(path) {
 // A presentation opened without a window closes when its show ends: open it again when needed.
 function ensure(path) {
   try { return deck(path); } catch (e) {}
-  var d = app().Presentations.Open(path, -1, 0, 0);
+  var d = alreadyOpen(path) || app().Presentations.Open(path, -1, 0, 0);
   decks[key(path)] = d;
   return d;
+}
+
+// Already open in PowerPoint (by the operator, or by a link during the show): use that one.
+function alreadyOpen(path) {
+  var ps = app().Presentations;
+  for (var i = 1; i <= ps.Count; i++) {
+    try { if (key(ps.Item(i).FullName) == key(path)) return ps.Item(i); } catch (e) {}
+  }
+  return null;
 }
 
 function open(path) {
@@ -65,7 +74,7 @@ function open(path) {
   if (!d) {
     // Read-only and without a window: the file stays untouched, and the operator can still open it
     // in PowerPoint to edit at the same time.
-    d = a.Presentations.Open(path, -1, 0, 0);
+    d = alreadyOpen(path) || a.Presentations.Open(path, -1, 0, 0);
     decks[key(path)] = d;
   }
   return describe(d);
@@ -131,6 +140,12 @@ function thumbs(path, dir, width, height, from, to) {
   return to - from + 1;
 }
 
+// One slide as a big picture (the phone's live slide).
+function exportOne(path, n, file, width, height) {
+  ensure(path).Slides.Item(n).Export(file, "PNG", width, height);
+  return true;
+}
+
 function close(path) {
   var d = null;
   try { d = deck(path); } catch (e) { return false; }
@@ -142,8 +157,9 @@ function close(path) {
 // ---------- the slide show ----------
 function showWindow() {
   var a = app();
-  if (!a.SlideShowWindows.Count) return null;
-  return a.SlideShowWindows.Item(1);
+  var n = a.SlideShowWindows.Count;
+  if (!n) return null;
+  return a.SlideShowWindows.Item(n);
 }
 
 function start(path, slide, windowed) {
@@ -215,6 +231,17 @@ function hit(sx, sy) {
   else if (act == 6) v.Exit();
   else if (act == 7) {
     var h = a.Hyperlink, sub = String(h.SubAddress || ''), addr = String(h.Address || '');
+    // A link to another presentation: the app opens it and runs its show (and comes back after),
+    // like PowerPoint does, so the presenter view and the phone follow along.
+    if (addr && /\.(pptx|ppt|ppsx|pps|pptm|ppsm)$/i.test(addr.replace(/[?#].*$/, '')) && !/^(?!file:)[a-z][a-z0-9+.-]*:\/\//i.test(addr)) {
+      var file = addr.replace(/^file:\/\/\/?/i, '');
+      try { file = decodeURIComponent(file); } catch (e) {}
+      file = file.replace(/\//g, '\\');
+      if (!/^([a-z]:\\|\\\\)/i.test(file)) file = d.Path + '\\' + file; // relative to this presentation
+      var at = 0;
+      if (sub) { var sp = sub.split(','); at = parseInt(sp.length > 1 ? sp[1] : sp[0], 10) || 0; }
+      return { done: false, file: file, slide: at };
+    }
     if (addr) h.Follow();
     else if (sub) {
       // "<slide id>,<slide index>,<title>": the id is what stays right if slides moved.
@@ -222,6 +249,11 @@ function hit(sx, sy) {
       try { n = d.Slides.FindBySlideID(parseInt(parts[0], 10)).SlideIndex; } catch (e) { n = parseInt(parts[1], 10) || 0; }
       if (n) v.GotoSlide(n); else return { done: false };
     } else return { done: false };
+  } else if (act == 10) {
+    // A custom show inside this presentation ("-1,-1,<name>"): PowerPoint plays it.
+    var name = String(a.SlideShowName || '') || String(a.Hyperlink.SubAddress || '').split(',').slice(2).join(',');
+    if (!name) return { done: false };
+    v.GotoNamedShow(name);
   } else return { done: false, kind: act };
   return { done: true, action: act };
 }
@@ -264,7 +296,7 @@ function quit(closeApp) {
 var commands = {
   quit: quit,
   ping: function () { return String(app().Version); },
-  open: open, thumbs: thumbs, close: close,
+  open: open, thumbs: thumbs, exportOne: exportOne, close: close,
   hit: hit, start: start, end: end, state: state, go: go, next: next, prev: prev,
   screen: screen, resume: resume, pointer: pointer, erase: erase
 };

@@ -9,7 +9,7 @@ const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ma3madan-ppt-test-'));
 const electron = require('electron');
 const r = spawnSync(electron, [path.join(__dirname, '..')], {
   stdio: 'inherit',
-  env: { ...process.env, MP_SELFTEST: '1', MP_SELFTEST_DIR: dir, ...(process.argv.includes('--remote') ? { MP_REMOTE_HOST: '1' } : {}) },
+  env: { ...process.env, MP_SELFTEST: '1', MP_SELFTEST_DIR: dir, ...(process.argv.includes('--remote') ? { MP_REMOTE_HOST: '1' } : {}), ...(process.argv.includes('--shots') ? { MP_SHOTS: '1' } : {}) },
   timeout: process.argv.includes('--remote') ? 0 : 180000,
 });
 fs.rmSync(dir, { recursive: true, force: true });
