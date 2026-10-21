@@ -10,6 +10,7 @@ const crypto = require('crypto');
 const { execFile } = require('child_process');
 const { pathToFileURL } = require('url');
 const ppt = require('./ppt/bridge');
+const slideLinks = require('./ppt/links');
 const updater = require('./updater');
 const qrcode = require('./vendor/qrcode');
 
@@ -118,7 +119,10 @@ function openDeck(file) {
 async function readDeck(file) {
   if (!fs.existsSync(file)) throw new Error('missing');
   const k = file.toLowerCase();
-  const info = await ppt.open(file);
+  // From the file itself when it's a .pptx (instant, even during a show); an old .ppt asks PowerPoint.
+  let info = null;
+  if (/\.(pptx|ppsx|pptm|ppsm)$/i.test(file)) { try { info = slideLinks.describe(file); } catch (e) { console.warn('describe', e.message); } }
+  if (!info) info = await ppt.open(file);
   const dir = thumbsDirFor(file);
   const d = { info, dir, ready: 0 };
   decks.set(k, d);
@@ -138,8 +142,8 @@ async function makeThumbs(d) {
     return;
   }
   const w = 480, h = Math.round(w * d.info.height / d.info.width);
-  for (let from = 1; from <= n; from += 6) {
-    const to = Math.min(n, from + 5);
+  for (let from = 1; from <= n; from += 2) {
+    const to = Math.min(n, from + 1);
     try { await ppt.thumbs(d.info.path, d.dir, w, h, from, to); } catch (e) { console.warn('thumbs', e.message); return; }
     d.ready = to;
     controlWin?.webContents.send('thumbs', { path: d.info.path, ready: to });
@@ -170,10 +174,21 @@ let showCoversControls = false; // the show is full screen on the operator's own
 const publicShow = () => ({ ...show, sourceId: show.running && showHwnd ? `window:${showHwnd}:0` : null });
 function sendShow() { controlWin?.webContents.send('show-state', publicShow()); }
 
-async function poll() {
+let polling = false, pollAgain = false;
+function poll() {
   clearTimeout(pollTimer);
+  if (polling) { pollAgain = true; return Promise.resolve(); }
+  polling = true;
+  return pollOnce().finally(() => {
+    polling = false;
+    if (pollAgain) { pollAgain = false; poll(); }
+    else if (show.running) pollTimer = setTimeout(poll, 300);
+  });
+}
+async function pollOnce() {
   let s;
-  try { s = await ppt.state(); } catch (e) { s = { running: false, error: e.message }; }
+  const tp = Date.now();
+  try { s = await ppt.state(); if (process.env.MP_SELFTEST && Date.now() - tp > 600) console.log('[slow state]', Date.now() - tp, 'ms'); } catch (e) { s = { running: false, error: e.message }; }
   const changed = JSON.stringify(s) !== JSON.stringify(show);
   // Another presentation took over the screen (a link in the slides): its window is a new one.
   if (!s.running || String(s.path || '').toLowerCase() !== String(show.path || '').toLowerCase()) { showHwnd = null; showRect = null; }
@@ -189,7 +204,9 @@ async function poll() {
   if ((!s.running || s.state === 5) && show.running && returnTo.length && !endingAll && !switching) {
     const back = returnTo.pop();
     show = s;
-    startShow(back.path, back.slide, { keepReturn: true }).catch(e => console.warn('return', e.message));
+    startShow(back.path, back.slide, { keepReturn: true })
+      .then(() => back.named && ppt.namedShow(back.named.name, back.named.from, back.slide).then(() => { named = back.named; poll(); }))
+      .catch(e => console.warn('return', e.message));
     return;
   }
   if (!s.running && !switching) { returnTo.length = 0; endingAll = false; }
@@ -203,8 +220,6 @@ async function poll() {
     if (s.running && s.path && s.slide) rememberSlide(s.path, s.slide);
     sendShow();
   }
-  // Fast while presenting (the operator sees changes made on the projector right away).
-  if (s.running) pollTimer = setTimeout(poll, 200);
 }
 
 // Presentations to come back to: a link in the slides started another one's show.
@@ -212,6 +227,8 @@ const returnTo = []; // [{ path, slide }]
 const following = new Set();
 let endingAll = false;
 let switching = 0; // a show is being started: its old one ending isn't the linked one ending
+let named = null; // inside a custom show: { path, from: the slide that opened it, name }
+const same = (a, b) => String(a || '').toLowerCase() === String(b || '').toLowerCase();
 
 async function startShow(file, slide, opts = {}) {
   switching++;
@@ -249,6 +266,8 @@ async function startShowNow(file, slide, opts) {
 }
 
 async function showCommand(c) {
+  const t0 = Date.now();
+  if (process.env.MP_SELFTEST) console.log('[cmd]', c.action, 'running', show.running);
   if (!show.running) return show;
   switch (c.action) {
     case 'next': await ppt.next(); break;
@@ -269,14 +288,32 @@ async function showCommand(c) {
 // sx, sy: the spot on the slide (0..1), from the presenter view or the phone.
 async function showClick(sx, sy) {
   if (!show.running) return;
-  // Links and action buttons: PowerPoint itself finds the shape and does its action.
-  const hit = await ppt.hit(sx, sy).catch(() => ({ done: false }));
-  if (process.env.MP_SELFTEST) console.log('[hit]', JSON.stringify(hit));
-  if (hit.done) { setTimeout(poll, 100); return; }
+  // Links and action buttons, found in the file itself (instant), then done by PowerPoint.
+  let hit = { done: false };
+  const act = show.slide ? slideLinks.hit(show.path, show.slide, sx, sy) : null;
+  if (process.env.MP_SELFTEST) console.log('[link]', JSON.stringify(act));
+  if (act) {
+    if (act.go) { await ppt.go(act.go); hit = { done: true }; }
+    else if (act.jump) {
+      // "End show" inside a custom show goes back to its menu slide (PowerPoint's way), not out.
+      if (act.jump === 'end') { if (named && same(named.path, show.path)) named = null; else endingAll = !returnTo.length; }
+      await ppt.jump(act.jump);
+      hit = { done: true };
+    }
+    else if (act.show) { named = { path: show.path, from: show.slide, name: act.show }; await ppt.namedShow(act.show); hit = { done: true }; }
+    else if (act.url) { shell.openExternal(act.url); hit = { done: true }; }
+    else if (act.open) { shell.openPath(act.open); hit = { done: true }; }
+    else if (act.file) hit = { done: false, file: act.file, slide: 1 };
+  } else if (act === undefined) {
+    // Not a file we can read (an old .ppt): ask PowerPoint what's there.
+    hit = await ppt.hit(sx, sy).catch(() => ({ done: false }));
+    if (process.env.MP_SELFTEST) console.log('[hit]', JSON.stringify(hit));
+  }
+  if (hit.done) { poll(); return; }
   if (hit.file) {
     // A link to another presentation: show it, and come back here when it ends.
     if (!fs.existsSync(hit.file)) { controlWin?.webContents.send('notice', { key: 'linkMissing', name: path.basename(hit.file) }); return; }
-    returnTo.push({ path: show.path, slide: show.slide });
+    returnTo.push({ path: show.path, slide: show.slide, named: named && same(named.path, show.path) ? named : null });
     await startShow(hit.file, hit.slide || 1, { keepReturn: true, notify: true });
     return;
   }

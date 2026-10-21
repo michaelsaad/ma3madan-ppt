@@ -10,7 +10,8 @@
 // otherwise mangle Arabic titles and paths).
 
 var pp = null;
-var decks = {}; // full path (lower case) → Presentation
+var decks = {};
+var namedFrom = 0; // the slide a custom show was started from // full path (lower case) → Presentation
 
 function app() {
   if (pp) { try { pp.Name; return pp; } catch (e) { pp = null; decks = {}; } }
@@ -163,19 +164,23 @@ function showWindow() {
 }
 
 function start(path, slide, windowed) {
-  var d = ensure(path);
+  // End what's showing first: ending a show closes a presentation opened without a window,
+  // and it may be this very one.
   end();
+  var d = ensure(path);
   var ss = d.SlideShowSettings;
   ss.ShowType = windowed ? 2 : 1;        // ppShowTypeWindow : ppShowTypeSpeaker (full screen)
   try { ss.ShowPresenterView = 0; } catch (e) {} // our app is the presenter view
   ss.RangeType = 1;                       // ppShowAll
   ss.AdvanceMode = 2;                     // ppSlideShowUseSlideTimings
+  forget();
   var w = ss.Run();
   if (slide && slide > 1) { try { w.View.GotoSlide(slide); } catch (e) {} }
   return state();
 }
 
 function end() {
+  forget();
   var a = app();
   while (a.SlideShowWindows.Count) { try { a.SlideShowWindows.Item(1).View.Exit(); } catch (e) { break; } }
   return true;
@@ -187,19 +192,29 @@ function view() {
   return w.View;
 }
 
+// Every property read is a round trip into PowerPoint (30–150 ms while a show runs), and this is
+// asked several times a second: keep the window, view and file name between calls, and read the
+// slide's details only when the slide changed.
+var seen = { count: -1, w: null, v: null, path: '', total: 0, slide: -1, clicks: 0 };
 function state() {
-  var w = null;
-  try { w = showWindow(); } catch (e) { return { running: false, error: String(e.message) }; }
-  if (!w) return { running: false };
-  var v = w.View, r = { running: true };
-  try { r.path = String(w.Presentation.FullName); } catch (e) {}
-  try { r.state = v.State; } catch (e) {}        // 1 running, 2 paused, 3 black, 4 white, 5 done
+  var a = app(), n = 0;
+  try { n = a.SlideShowWindows.Count; } catch (e) { return { running: false, error: String(e.message) }; }
+  if (!n) { seen.count = 0; seen.w = null; return { running: false }; }
+  if (n != seen.count || !seen.w) {
+    seen.count = n; seen.w = a.SlideShowWindows.Item(n); seen.v = seen.w.View;
+    seen.path = String(seen.w.Presentation.FullName); seen.total = seen.w.Presentation.Slides.Count; seen.slide = -1;
+  }
+  var v = seen.v, r = { running: true, path: seen.path, count: seen.total };
   try { r.slide = v.Slide.SlideIndex; } catch (e) { r.slide = 0; } // 0 = the "end of show" screen
-  try { r.click = v.GetClickIndex(); r.clicks = v.GetClickCount(); } catch (e) {}
-  try { r.count = w.Presentation.Slides.Count; } catch (e) {}
-  try { r.pointer = v.PointerType; } catch (e) {}
+  try { r.state = v.State; } catch (e) { seen.w = null; }           // 1 running, 2 paused, 3 black, 4 white, 5 done
+  try {
+    if (r.slide != seen.slide) { seen.slide = r.slide; seen.clicks = r.slide ? v.GetClickCount() : 0; }
+    r.clicks = seen.clicks;
+    r.click = seen.clicks ? v.GetClickIndex() : 0;
+  } catch (e) {}
   return r;
 }
+function forget() { seen.w = null; seen.count = -1; }
 
 function go(n) { view().GotoSlide(n); return state(); }
 function next() { view().Next(); return state(); }
@@ -228,7 +243,12 @@ function hit(sx, sy) {
   else if (act == 3) v.First();
   else if (act == 4) v.Last();
   else if (act == 5) v.GotoSlide(v.LastSlideViewed.SlideIndex);
-  else if (act == 6) v.Exit();
+  else if (act == 6) {
+    // "End show" inside a custom show: back to the slide that opened it, like PowerPoint.
+    var inNamed = ''; try { inNamed = String(v.SlideShowName || ''); } catch (e) {}
+    if (inNamed && namedFrom) { v.EndNamedShow(); v.GotoSlide(namedFrom); namedFrom = 0; }
+    else v.Exit();
+  }
   else if (act == 7) {
     var h = a.Hyperlink, sub = String(h.SubAddress || ''), addr = String(h.Address || '');
     // A link to another presentation: the app opens it and runs its show (and comes back after),
@@ -253,6 +273,7 @@ function hit(sx, sy) {
     // A custom show inside this presentation ("-1,-1,<name>"): PowerPoint plays it.
     var name = String(a.SlideShowName || '') || String(a.Hyperlink.SubAddress || '').split(',').slice(2).join(',');
     if (!name) return { done: false };
+    namedFrom = v.Slide.SlideIndex;
     v.GotoNamedShow(name);
   } else return { done: false, kind: act };
   return { done: true, action: act };
@@ -284,6 +305,31 @@ function findAction(shapes, x, y) {
   return null;
 }
 
+// Click actions found in the file by the app (see links.js).
+function jump(kind) {
+  var v = view();
+  if (kind == 'next') v.Next();
+  else if (kind == 'prev') v.Previous();
+  else if (kind == 'first') v.First();
+  else if (kind == 'last') v.Last();
+  else if (kind == 'lastviewed') v.GotoSlide(v.LastSlideViewed.SlideIndex);
+  else if (kind == 'end') {
+    // "End show" inside a custom show: back to the slide that opened it, like PowerPoint.
+    var inNamed = ''; try { inNamed = String(v.SlideShowName || ''); } catch (e) {}
+    if (inNamed && namedFrom) { v.EndNamedShow(); v.GotoSlide(namedFrom); namedFrom = 0; }
+    else { forget(); v.Exit(); }
+  }
+  return state();
+}
+// A custom show; `from` is the slide its "end show" goes back to, `at` a slide inside it to go to.
+function namedShow(name, from, at) {
+  var v = view();
+  namedFrom = from || v.Slide.SlideIndex;
+  v.GotoNamedShow(name);
+  if (at) v.GotoSlide(at);
+  return state();
+}
+
 // On exit: close what we opened, and PowerPoint too if nothing else is open in it.
 function quit(closeApp) {
   end();
@@ -297,7 +343,7 @@ var commands = {
   quit: quit,
   ping: function () { return String(app().Version); },
   open: open, thumbs: thumbs, exportOne: exportOne, close: close,
-  hit: hit, start: start, end: end, state: state, go: go, next: next, prev: prev,
+  hit: hit, jump: jump, namedShow: namedShow, start: start, end: end, state: state, go: go, next: next, prev: prev,
   screen: screen, resume: resume, pointer: pointer, erase: erase
 };
 

@@ -146,6 +146,7 @@ async function remoteThumb(id) {
 
 // The phone's buttons do what the same buttons here do.
 async function remoteCommand(c) {
+  if (window.MP_DEBUG) console.log("remote", JSON.stringify(c));
   const d = activeDeck();
   switch (c.action) {
     case 'next': case 'prev': case 'black': case 'white': case 'end': case 'first': case 'last':

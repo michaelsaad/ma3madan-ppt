@@ -1,6 +1,6 @@
 {
   "name": "ma3madan-ppt",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A presenter view for PowerPoint: your slides full screen on the projector, and on your laptop the next slide, notes, sections, a slide grid, a library of presentations and a phone remote.",
   "main": "src/main.js",
   "scripts": {

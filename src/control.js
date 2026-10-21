@@ -498,7 +498,7 @@ async function startShow(from) {
   toast(t('starting'));
   const r = await api.startShow(d.path, from || 1);
   $('toast').hidden = true;
-  if (!r.ok) { toast(t('startFailed', { e: r.error })); return; }
+  if (!r.ok) { console.warn('start failed', r.error); toast(t('startFailed', { e: r.error })); return; }
   timerStart = Date.now(); timerPaused = 0; timerPausedAt = null;
   onShow(r.result);
 }

@@ -11,12 +11,13 @@ const readline = require('readline');
 const here = __dirname.replace(/app\.asar([\\/])/, 'app.asar.unpacked$1');
 
 // Only ASCII crosses the pipe: everything else as \uXXXX (see host.js).
+const LOW = new Set(['thumbs']); // background work
 const ascii = s => s.replace(/[\u007f-￿]/g, c => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
 
 class Helper {
   constructor(name, command, args) {
     this.name = name; this.command = command; this.args = args;
-    this.proc = null; this.pending = new Map(); this.nextId = 1; this.queue = Promise.resolve();
+    this.proc = null; this.pending = new Map(); this.nextId = 1; this.high = []; this.low = []; this.busy = false;
   }
   start() {
     const p = spawn(this.command, this.args, { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
@@ -36,23 +37,34 @@ class Helper {
       this.pending.clear();
     });
   }
-  // Commands run one at a time, in order.
+  // Commands run one at a time. Background work (slide pictures) waits while anything the
+  // operator did is waiting, so a tap never queues behind a batch of thumbnails.
   call(cmd, ...args) {
-    const run = () => new Promise((resolve, reject) => {
-      if (!this.proc) this.start();
-      const id = this.nextId++;
-      const timer = setTimeout(() => {
-        if (!this.pending.has(id)) return;
-        this.pending.delete(id);
-        reject(new Error(`${this.name}: ${cmd} timed out`));
-        this.kill(); // stuck (a PowerPoint dialog?): start fresh next time
-      }, cmd === 'thumbs' || cmd === 'open' ? 120000 : 15000);
-      this.pending.set(id, { resolve: v => { clearTimeout(timer); resolve(v); }, reject: e => { clearTimeout(timer); reject(e); } });
-      this.proc.stdin.write(ascii(JSON.stringify({ id, cmd, args })) + '\n');
+    return new Promise((resolve, reject) => {
+      (LOW.has(cmd) ? this.low : this.high).push({ cmd, args, resolve, reject });
+      this.pump();
     });
-    const p = this.queue.then(run, run);
-    this.queue = p.catch(() => {});
-    return p;
+  }
+  pump() {
+    if (this.busy) return;
+    const job = this.high.shift() || this.low.shift();
+    if (!job) return;
+    this.busy = true;
+    const done = () => { this.busy = false; this.pump(); };
+    if (!this.proc) this.start();
+    const id = this.nextId++;
+    const timer = setTimeout(() => {
+      if (!this.pending.has(id)) return;
+      this.pending.delete(id);
+      job.reject(new Error(`${this.name}: ${job.cmd} timed out`));
+      this.kill(); // stuck (a PowerPoint dialog?): start fresh next time
+      done();
+    }, job.cmd === 'thumbs' || job.cmd === 'open' ? 120000 : 15000);
+    this.pending.set(id, {
+      resolve: v => { clearTimeout(timer); job.resolve(v); done(); },
+      reject: e => { clearTimeout(timer); job.reject(e); done(); },
+    });
+    this.proc.stdin.write(ascii(JSON.stringify({ id, cmd: job.cmd, args: job.args })) + '\n');
   }
   kill() { try { this.proc?.kill(); } catch {} this.proc = null; }
 }
@@ -78,6 +90,8 @@ module.exports = {
   pointer: t => host.call('pointer', t),
   erase: () => host.call('erase'),
   hit: (sx, sy) => host.call('hit', sx, sy),
+  jump: kind => host.call('jump', kind),
+  namedShow: (name, from, at) => host.call('namedShow', name, from, at),
   findShow: () => win.call('find'),
   place: rect => win.call('place', rect),
   click: (fx, fy, back) => win.call('click', { fx, fy, back }),
