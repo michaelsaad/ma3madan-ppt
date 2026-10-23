@@ -13,13 +13,17 @@ const ppt = require('./ppt/bridge');
 const slideLinks = require('./ppt/links');
 const updater = require('./updater');
 const qrcode = require('./vendor/qrcode');
+const { createHub } = require('./hub');
 
 const APP_NAME = 'Ma3madan PPT';
 const DECK_RE = /\.(pptx|ppt|ppsx|pps|pptm|ppsm)$/i;
+// Files a link in the slides may open straight away (documents and media, never programs).
+const SAFE_OPEN = /\.(pdf|jpe?g|png|gif|bmp|webp|tiff?|mp4|m4v|mov|wmv|avi|mkv|webm|mp3|wav|m4a|wma|aac|flac|ogg|txt)$/i;
 
 app.commandLine.appendSwitch('disable-features', 'WebRtcHideLocalIpsWithMdns');
 if (process.env.MP_SELFTEST) {
   app.commandLine.appendSwitch('disable-renderer-backgrounding');
+  app.setPath('appData', process.env.MP_SELFTEST_DIR); // the shared phone link (hub.js) too: never the real one
   app.setPath('userData', process.env.MP_SELFTEST_DIR);
 }
 if (!app.requestSingleInstanceLock()) app.quit();
@@ -117,6 +121,7 @@ function openDeck(file) {
   return openingDecks.get(k);
 }
 async function readDeck(file) {
+  if (typeof file !== 'string' || !DECK_RE.test(file)) throw new Error('not a presentation');
   if (!fs.existsSync(file)) throw new Error('missing');
   const k = file.toLowerCase();
   // From the file itself when it's a .pptx (instant, even during a show); an old .ppt asks PowerPoint.
@@ -234,16 +239,39 @@ async function startShow(file, slide, opts = {}) {
   switching++;
   try { return await startShowNow(file, slide, opts); } finally { switching--; }
 }
+// A point inside the chosen screen, in real pixels: the window helper finds that screen's exact
+// rectangle itself (Electron's own numbers are scaled per screen).
+function targetPoint(display) {
+  const b = display.bounds;
+  return screen.dipToScreenPoint({ x: Math.round(b.x + b.width / 2), y: Math.round(b.y + b.height / 2) });
+}
+let placeTimers = [];
+async function placeShow(target) {
+  if (!target.display || target.windowed) return;
+  const covers = target.display.id === controlDisplay().id;
+  const placed = await ppt.place({ ...targetPoint(target.display), top: !covers });
+  showRect = placed.rect;
+  return placed;
+}
+// PowerPoint can resize its show a moment after it opens (a screen with another scaling sends it
+// a "DPI changed"): look again twice, and put it back if it moved.
+function recheckPlacement(target) {
+  for (const t of placeTimers) clearTimeout(t);
+  placeTimers = [600, 1800].map(ms => setTimeout(() => { if (show.running) placeShow(target).catch(() => {}); }, ms));
+}
+
 async function startShowNow(file, slide, opts) {
   if (!opts.keepReturn) returnTo.length = 0;
   const target = showTarget();
+  let monitor = null;
+  if (target.display && !target.windowed) { try { monitor = (await ppt.monitor(targetPoint(target.display))).device; } catch {} }
   if (decks.has(file.toLowerCase())) {
-    await ppt.start(file, slide || 1, !!target.windowed);
+    await ppt.start(file, slide || 1, !!target.windowed, monitor);
   } else {
     // Not read yet (a link to another presentation): the show starts first, at once, and its
     // slides, notes and sections are read right after.
     if (!fs.existsSync(file)) throw new Error('missing');
-    await ppt.start(file, slide || 1, !!target.windowed);
+    await ppt.start(file, slide || 1, !!target.windowed, monitor);
     openDeck(file).then(d => controlWin?.webContents.send('deck-opened', d)).catch(e => console.warn('open', e.message));
   }
   if (opts.notify && decks.has(file.toLowerCase())) controlWin?.webContents.send('deck-opened', deckPayload(decks.get(file.toLowerCase())));
@@ -251,12 +279,9 @@ async function startShowNow(file, slide, opts) {
     const found = await ppt.findShow();
     showHwnd = found.hwnd;
     showRect = found.rect;
-    if (target.display) {
-      // PowerPoint picks its own monitor: move the show to the chosen screen, in real pixels.
-      const r = screen.dipToScreenRect(null, target.display.bounds);
-      const placed = await ppt.place({ x: r.x, y: r.y, w: r.width, h: r.height });
-      showRect = placed.rect;
-    }
+    // PowerPoint was told the screen; make sure it fills it exactly (else Windows keeps the taskbar).
+    await placeShow(target);
+    recheckPlacement(target);
   } catch (e) { console.warn('show window', e.message); }
   // Keys stay with the operator's window (unless the show covers it: one screen only).
   showCoversControls = !target.windowed && target.display?.id === controlDisplay().id;
@@ -302,7 +327,9 @@ async function showClick(sx, sy) {
     }
     else if (act.show) { named = { path: show.path, from: show.slide, name: act.show }; await ppt.namedShow(act.show); hit = { done: true }; }
     else if (act.url) { shell.openExternal(act.url); hit = { done: true }; }
-    else if (act.open) { shell.openPath(act.open); hit = { done: true }; }
+    // A link to a file: a picture, a video, a PDF… opens here. Anything else (a program, a
+    // script, a file on another computer) is left to PowerPoint, which asks first.
+    else if (act.open && SAFE_OPEN.test(act.open) && !/^\\\\/.test(act.open) && fs.existsSync(act.open)) { shell.openPath(act.open); hit = { done: true }; }
     else if (act.file) hit = { done: false, file: act.file, slide: 1 };
   } else if (act === undefined) {
     // Not a file we can read (an old .ppt): ask PowerPoint what's there.
@@ -408,6 +435,7 @@ ipcMain.on('set-setting', (_e, k, v) => {
   settings[k] = v; saveSettings();
   if (k === 'theme') applyTheme();
   if (k === 'showOn') sendDisplays();
+  if (k === 'remoteOn') { if (v) hub?.start(); else hub?.stop(); }
 });
 ipcMain.handle('app-version', () => app.getVersion());
 ipcMain.handle('get-displays', () => displaysInfo());
@@ -454,6 +482,8 @@ ipcMain.handle('qr-svg', (_e, text) => {
   return q.createSvgTag({ cellSize: 6, margin: 3, scalable: true });
 });
 ipcMain.handle('host-name', () => require('os').hostname());
+// A phone asks to connect: the taskbar button blinks until the window is looked at.
+ipcMain.on('flash-window', () => { if (controlWin && !controlWin.isFocused()) controlWin.flashFrame(true); });
 // A slide's picture for the phone: a small JPEG as a data URL (it travels over the data channel).
 ipcMain.handle('thumb-data', async (_e, file, n, width) => {
   const d = decks.get(String(file).toLowerCase());
@@ -497,14 +527,24 @@ function checkPowerPointRunning() {
   });
 }
 
+let hub = null;
 app.whenReady().then(() => {
   checkPowerPointRunning();
   createControl();
+  // The phone link, shared with Ma3madan Play when both are open (hub.js).
+  hub = createHub({ app: 'ppt', title: APP_NAME, version: app.getVersion(), window: () => controlWin, computerName: () => require('os').hostname(), phoneDir: path.join(__dirname, 'phone') });
+  controlWin.webContents.on('did-finish-load', () => hub.pageReady());
+  if (settings.remoteOn && (!process.env.MP_SELFTEST || process.env.MP_LINK_TEST)) hub.start();
   if (process.env.MP_SELFTEST) controlWin.webContents.on('console-message', e => console.log('[page]', e.message));
   if (process.env.MP_SELFTEST) require(process.env.MP_REMOTE_HOST ? '../test/remote-host' : process.env.MP_SHOTS ? '../test/readme-shots' : '../test/selftest')(controlWin, { app, ppt });
   screen.on('display-added', sendDisplays);
   screen.on('display-removed', sendDisplays);
   screen.on('display-metrics-changed', sendDisplays);
+  // A screen changed (projector plugged in, scaling or resolution changed) during a show: fill it again.
+  for (const ev of ['display-added', 'display-removed', 'display-metrics-changed']) screen.on(ev, () => { if (show.running) setTimeout(() => placeShow(showTarget()).catch(() => {}), 500); });
+  // Start the window helper now, not on the first show: it takes a second or two to load, and
+  // a show placed late is one the audience sees jump. Locked-down PCs may not allow it at all.
+  ppt.warm().catch(e => { console.warn('window helper', e.message); setTimeout(() => controlWin?.webContents.send('notice', { key: 'winHelperFailed' }), 3000); });
   setTimeout(pruneThumbs, 30000);
   if (app.isPackaged) {
     const checkForUpdate = () => updater.check().then(info => info && controlWin?.webContents.send('update-available', info)).catch(() => {});
@@ -519,6 +559,7 @@ app.on('before-quit', e => {
   e.preventDefault();
   quitting = true;
   clearTimeout(pollTimer);
+  hub?.stop();
   // Close our read-only copies; close PowerPoint only if we started it and it has nothing else open.
   Promise.race([ppt.quit(!powerPointWasRunning), new Promise(r => setTimeout(r, 4000))])
     .catch(() => {})

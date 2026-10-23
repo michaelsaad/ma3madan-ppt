@@ -9,6 +9,11 @@ using System; using System.Runtime.InteropServices; using System.Text;
 public class Win {
   public delegate bool EnumProc(IntPtr h, IntPtr l);
   [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+  [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr c);
+  [DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr c);
+  [DllImport("shcore.dll")] public static extern int SetProcessDpiAwareness(int v);
+  [DllImport("user32.dll")] public static extern IntPtr MonitorFromPoint(POINT p, uint f);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern bool GetMonitorInfo(IntPtr m, ref MONITORINFOEX i);
   [DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc f, IntPtr l);
   [DllImport("user32.dll")] public static extern int GetClassName(IntPtr h, StringBuilder s, int n);
   [DllImport("user32.dll")] public static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
@@ -39,6 +44,27 @@ public class Win {
   }
   public static string ClassAt(int x, int y) { var p = new POINT { X = x, Y = y }; var h = GetAncestor(WindowFromPoint(p), 2); var c = new StringBuilder(64); GetClassName(h, c, 64); return c.ToString(); }
   public struct RECT { public int L, T, R, B; }
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+  public struct MONITORINFOEX { public int cbSize; public RECT rcMonitor; public RECT rcWork; public int dwFlags; [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string szDevice; }
+
+  // Real pixels on every screen, whatever each one's scaling (125 %, 150 %…). Electron hands us
+  // per-monitor pixels; a "system aware" helper gets them scaled on a screen with another scaling,
+  // which is what left the show on half the projector. Per thread, because powershell.exe has its
+  // own manifest setting; older Windows 10 builds fall back step by step.
+  static bool processSet;
+  public static string Aware() {
+    try { if (SetThreadDpiAwarenessContext(new IntPtr(-4)) != IntPtr.Zero) return "pmv2"; } catch (Exception) {}
+    if (processSet) return "process";
+    processSet = true;
+    try { if (SetProcessDpiAwarenessContext(new IntPtr(-4))) return "pmv2-process"; } catch (Exception) {}
+    try { if (SetProcessDpiAwareness(2) == 0) return "pm"; } catch (Exception) {}
+    SetProcessDPIAware(); return "system";
+  }
+  public static MONITORINFOEX Monitor(int x, int y) {
+    var i = new MONITORINFOEX(); i.cbSize = Marshal.SizeOf(typeof(MONITORINFOEX));
+    GetMonitorInfo(MonitorFromPoint(new POINT { X = x, Y = y }, 2), ref i);
+    return i;
+  }
   public struct POINT { public int X, Y; }
 
   // The slide show: full screen it's a "screenClass" window; in a window it's a PowerPoint frame
@@ -56,7 +82,7 @@ public class Win {
   }
 }
 "@
-[Win]::SetProcessDPIAware() | Out-Null  # physical pixels everywhere
+$dpi = [Win]::Aware()
 
 function Rect($h) { $r = New-Object Win+RECT; [Win]::GetWindowRect($h, [ref]$r) | Out-Null; @{ x = $r.L; y = $r.T; w = $r.R - $r.L; h = $r.B - $r.T } }
 
@@ -66,9 +92,26 @@ function Find() {
 }
 
 $commands = @{
+  ping = { @{ dpi = $dpi } }
   find = { $h = Find; @{ hwnd = [int64]$h; rect = (Rect $h) } }
-  # x, y, w, h in physical pixels (the projector's bounds)
-  place = { param($a) $h = Find; [Win]::SetWindowPos($h, [IntPtr]::Zero, $a.x, $a.y, $a.w, $a.h, 0x0014) | Out-Null; @{ rect = (Rect $h) } }
+  # The screen at x, y (real pixels): its exact rectangle and its name for PowerPoint (DISPLAY2…).
+  monitor = { param($a) $m = [Win]::Monitor($a.x, $a.y); $r = $m.rcMonitor; @{ device = $m.szDevice; rect = @{ x = $r.L; y = $r.T; w = $r.R - $r.L; h = $r.B - $r.T } } }
+  # Fill the screen at x, y exactly. Exactly is what makes Windows treat it as full screen (no
+  # taskbar over it); top: above everything there (when the show is on its own screen).
+  place = {
+    param($a)
+    $h = Find; $m = [Win]::Monitor($a.x, $a.y); $r = $m.rcMonitor
+    $want = @{ x = $r.L; y = $r.T; w = $r.R - $r.L; h = $r.B - $r.T }
+    $cur = Rect $h
+    $moved = $false
+    if ($cur.x -ne $want.x -or $cur.y -ne $want.y -or $cur.w -ne $want.w -or $cur.h -ne $want.h -or $a.top) {
+      $after = if ($a.top) { [IntPtr](-1) } else { [IntPtr]::Zero }
+      $flags = if ($a.top) { 0x0070 } else { 0x0074 }  # NOACTIVATE|FRAMECHANGED|SHOWWINDOW (+NOZORDER)
+      [Win]::SetWindowPos($h, $after, $want.x, $want.y, $want.w, $want.h, $flags) | Out-Null
+      $moved = $true
+    }
+    @{ rect = (Rect $h); want = $want; moved = $moved; device = $m.szDevice }
+  }
   # fx, fy: where on the slide (0..1 of the show window); back: our window, to give it the keyboard back
   click = {
     param($a)
@@ -103,6 +146,7 @@ while ($true) {
   $id = 0
   try {
     $msg = $line | ConvertFrom-Json
+    [Win]::Aware() | Out-Null
     $id = $msg.id
     $result = & $commands[$msg.cmd] $msg.args
     $out = @{ id = $id; ok = $true; result = $result }

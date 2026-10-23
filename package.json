@@ -1,6 +1,6 @@
 {
   "name": "ma3madan-ppt",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "A presenter view for PowerPoint: your slides full screen on the projector, and on your laptop the next slide, notes, sections, a slide grid, a library of presentations and a phone remote.",
   "main": "src/main.js",
   "scripts": {
@@ -10,7 +10,8 @@
     "test:bridge": "node test/bridge.js",
     "test": "node test/run-selftest.js",
     "test:remote": "node test/run-selftest.js --remote",
-    "shots": "node test/run-selftest.js --shots"
+    "shots": "node test/run-selftest.js --shots",
+    "phone": "node build/copy-phone.js"
   },
   "keywords": [
     "electron",
@@ -52,7 +53,8 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Ma3madan PPT",
-      "differentialPackage": false
+      "differentialPackage": false,
+      "include": "build/installer.nsh"
     },
     "portable": {
       "artifactName": "Ma3madan-PPT-Portable-${version}.${ext}"

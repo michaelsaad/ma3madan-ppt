@@ -42,9 +42,13 @@ Running slides for a meeting, a church service or a class usually means juggling
   - **Search** across all of them.
   - Several presentations open at the same time, as tabs at the top: switch with a click or `Ctrl + Tab`.
   - It remembers the slide you stopped at in each one.
-- **Phone remote.** Turn it on and scan the QR code once: the [Ma3madan Remote](https://ma3madan-remote.pages.dev) app opens on the phone (add it to the home screen) and connects by itself from then on, directly over the Wi-Fi. Or pick this computer from **Computers on this Wi-Fi** in the app and approve it here. On the phone: the live slide (tap it to click on it), next and back, black, white, end, your notes, the timer, every section with its slides, and your presentations, recents and lists to open or start.
+- **Phone remote.** Turn it on and scan the QR code once: the [Ma3madan Remote](https://ma3madan-remote.pages.dev) app opens on the phone (add it to the home screen) and connects by itself from then on, in about a second. Or pick this computer from **Computers on this Wi-Fi** in the app and approve it here. On the phone: the live slide (tap it to click on it), next and back, black, white, end, your notes, the timer, every section with its slides, and your presentations, recents and lists to open or start.
+  - **One connection with Ma3madan Play.** When both apps are open, the phone has one connection to the computer and a tab for each: one QR code, one approval.
+  - **Trusted phones.** Each phone gets a key of its own. See them in the remote's window and **Forget** any one of them, or all.
+  - **Works on more networks.** Directly over the Wi-Fi when it can; through an encrypted relay when the Wi-Fi keeps devices apart (guest and church networks often do) or the phone is on mobile data.
+  - **No internet at all?** Scan the code under **No internet here?**: the same remote, served by this computer on the local network.
 - **Edit while you present.** Presentations open read-only in the background, so the file stays untouched and you can still open it in PowerPoint to fix a typo (**⋯** → **Edit in PowerPoint**).
-- **Choose the screen** for the show (**This screen / Screen 2 ▾**), or let the app pick the projector by itself.
+- **Choose the screen** for the show (**This screen / Screen 2 ▾**), or let the app pick the projector by itself. The show fills that screen exactly, whatever its resolution or scaling (125 %, 150 %…), with no taskbar over it, also through HDMI splitters that feed several screens.
 - **English and Arabic** interface (Arabic is right-to-left), **light and dark** themes that follow Windows, and every shortcut one `?` away.
 - **Opens presentations from Explorer** (`.pptx`, `.ppt`, `.ppsx`, `.pps`, `.pptm`, `.ppsm`).
 
@@ -56,7 +60,7 @@ You need **Microsoft PowerPoint** (2013 or later, including Microsoft 365) on th
 
 1. Download **`Ma3madan-PPT-Setup-x.y.z.exe`** from the [latest release](https://github.com/michaelsaad/ma3madan-ppt/releases/latest).
 2. Run it. Because the app is new and not code-signed yet, Edge or Windows may warn you first. See [Windows says the file is unsafe](#windows-says-the-file-is-unsafe) below.
-3. Pick where to install it. No admin rights are needed.
+3. Pick where to install it. No admin rights are needed. Installed for all users, it also lets the phone remote through the Windows firewall on private networks; otherwise Windows asks once, the first time (choose **Private networks**).
 
 Prefer not to install? Download **`Ma3madan-PPT-Portable-x.y.z.exe`** and run it from anywhere.
 
@@ -71,7 +75,7 @@ Edge and Windows SmartScreen warn about any new program that isn't code-signed a
 
 ### Updates
 
-When a new version is out, an **Update** button appears in the top bar. Nothing changes until you click it (and never during a show). The app downloads the new installer, checks it against the SHA-256 that GitHub publishes for the file, installs it and restarts. The portable version's button opens the download page instead.
+The app updates itself. It looks for a new version a little after it starts and every few hours (or right away with **ⓘ** → **Check for updates**). When one is out, an **Update** button appears in the top bar. Nothing changes until you click it, and never during a show. The app downloads the new installer, checks it against the SHA-256 that GitHub publishes for the file, installs it and restarts. The portable version's button opens the download page instead.
 
 ## Using it with a projector
 
@@ -81,6 +85,8 @@ When a new version is out, an **Update** button appears in the top bar. Nothing 
 4. To use another screen, pick it under **Screen ▾** before starting.
 
 With only one screen, the show fills that screen like in PowerPoint; use the keyboard or the phone remote to move through it.
+
+If a screen is plugged in or changes resolution during the show, the show fills it again by itself.
 
 ## Keyboard shortcuts
 
@@ -114,18 +120,27 @@ npm start
 ### How it works
 
 - `src/ppt/host.js` runs under Windows Script Host and talks to PowerPoint through COM (late-bound, so it works with any installed Office, 32- or 64-bit): opening presentations read-only without a window, sections, notes, slide pictures, and the slide show itself.
-- `src/ppt/win.ps1` does what COM can't: it finds the show window, puts it on the chosen screen, and clicks inside it.
+- `src/ppt/win.ps1` does what COM can't: it finds the show window, fills the chosen screen with it (in real pixels, aware of each screen's own scaling), and clicks inside it. PowerPoint is also told the screen before the show starts, so it opens there at once.
 - A click on a slide first goes to PowerPoint, which finds the shape there and runs its action (a link, "go to slide", next, end…). Anything else becomes a real click on the projector.
 - The live slide in the presenter view is a capture of the show window.
-- The phone remote is the [Ma3madan Remote](https://github.com/michaelsaad/ma3madan-remote) app over an encrypted WebRTC connection (`src/link.js`, `src/link-host.js`, shared with Ma3madan Play).
+- The phone remote is the [Ma3madan Remote](https://github.com/michaelsaad/ma3madan-remote) app over an encrypted WebRTC connection. These files are shared with Ma3madan Play:
+  - `src/hub.js`: one link for both apps. The first app with the remote on holds it; the other joins it over a named pipe and takes over if the first one closes.
+  - `src/link-host.js` · `src/link.js`: the WebRTC side, and the pairing, keys and signaling.
+  - `src/lan.js` · `src/phone/`: the Wi-Fi page for places with no internet (a copy of the phone app; `npm run phone` refreshes it).
 
 ### Releasing
 
-Bump `version` in `package.json` and commit. `npm run dist` builds the installer and the portable `.exe` into `dist/`; attach both to a GitHub release tagged `vX.Y.Z`. The app's updater finds the newest release and checks the installer against the SHA-256 GitHub shows for it.
+Releases are built by GitHub Actions ([`.github/workflows/release.yml`](.github/workflows/release.yml)), like Ma3madan Play's:
+
+1. Bump `version` in `package.json` and commit.
+2. Push a matching tag: `git tag v1.2.0 && git push origin v1.2.0`.
+3. The workflow builds the installer and the portable `.exe` (and signs them once code signing is set up) and creates a **draft** release with both. Check it, write the notes, and publish.
+
+The app's updater finds the newest release and checks the installer against the SHA-256 GitHub shows for it. `npm run dist` builds the same files locally into `dist/`.
 
 ## Privacy
 
-The app doesn't collect, store or send any personal data or usage statistics. Your presentations never leave your computer. It connects to the internet only to check GitHub for app updates and, when you turn the phone remote on, to find your phone: the Ma3madan Remote app meets the computer through a signaling server that sees only encrypted messages and deletes them after ten minutes, then talks to it directly over the Wi-Fi. The slide pictures, notes and titles the phone shows travel only over that direct, encrypted connection.
+The app doesn't collect, store or send any personal data or usage statistics. Your presentations never leave your computer. It connects to the internet only to check GitHub for app updates and, when you turn the phone remote on, to find your phone: the Ma3madan Remote app meets the computer through a signaling server that passes on only encrypted messages and keeps none of them, then talks to it directly over the Wi-Fi (or through an encrypted relay that can't read it either). The slide pictures, notes and titles the phone shows travel only over that encrypted connection. A link in a slide to a program or to a file on another computer is left to PowerPoint, which asks before opening it.
 
 ## Third-party software
 

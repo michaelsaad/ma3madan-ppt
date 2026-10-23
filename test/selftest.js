@@ -133,8 +133,9 @@ module.exports = async function selftest(win, { app, ppt }) {
       await until('!!document.querySelector("#remoteBody .qr svg")', 15000);
       await wait(300);
       await shot('9-remote');
-      const url = await js('pairUrl()');
-      assert.ok(/^https:\/\/ma3madan-remote\.pages\.dev\/#pair=[\w-]+&name=.+&app=ppt$/.test(url), url);
+      const url = await js('link.pairUrl');
+      assert.ok(/^https:\/\/([\w-]+\.)?ma3madan-remote\.pages\.dev\/#pair=[\w-]+\.[\w-]+&name=.+$/.test(url), url);
+      log('trusted phones:', await js('JSON.stringify(link.devices)'), '| Wi-Fi page:', await js('!!link.lan?.urls?.length'));
       await js(`document.getElementById('rOff').click()`);
       log('remote dialog ok');
     }

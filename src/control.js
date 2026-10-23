@@ -688,9 +688,18 @@ $('aboutBtn').onclick = async () => {
     <p>${esc(t('aboutName'))}</p>
     <p>${esc(t('aboutText'))}</p>
     <ul><li>${esc(t('aboutF1'))}</li><li>${esc(t('aboutF2'))}</li><li>${esc(t('aboutF3'))}</li><li>${esc(t('aboutF4'))}</li></ul>
-    <div class="actions"><button id="mGithub" class="ghost">${esc(t('aboutGithub'))}</button><button class="primary" id="mClose">${esc(t('ok'))}</button></div>`, c => {
+    <p id="mUpdateStatus" class="muted" aria-live="polite"></p>
+    <div class="actions"><button id="mGithub" class="ghost">${esc(t('aboutGithub'))}</button><button id="mCheck" class="ghost">${esc(t('checkUpdates'))}</button><span class="grow"></span><button class="primary" id="mClose">${esc(t('ok'))}</button></div>`, c => {
     c.querySelector('#mClose').onclick = closeModal;
     c.querySelector('#mGithub').onclick = () => window.open('https://github.com/michaelsaad/ma3madan-ppt');
+    // Look for a new version now (it's also checked by itself a little after start, then every 6 hours).
+    c.querySelector('#mCheck').onclick = async () => {
+      const b = c.querySelector('#mCheck'), status = c.querySelector('#mUpdateStatus');
+      b.disabled = true; status.textContent = t('checking');
+      const r = await api.checkForUpdate();
+      b.disabled = false;
+      status.textContent = !r.ok ? t('checkFailed') : r.info ? t('updateFound', { v: r.info.version }) : t('upToDate');
+    };
   });
 };
 

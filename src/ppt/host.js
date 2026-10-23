@@ -163,7 +163,21 @@ function showWindow() {
   return a.SlideShowWindows.Item(n);
 }
 
-function start(path, slide, windowed) {
+// PowerPoint opens a full-screen show on the monitor of its own "Slide Show > Monitor" setting.
+// Point it at the chosen screen for this one start (then put the user's setting back), so the show
+// opens there at the right size instead of being moved across screens with different scaling.
+function withMonitor(device, run) {
+  if (!device) return run();
+  var sh = new ActiveXObject("WScript.Shell"), key = null, old = null, had = false;
+  try { key = "HKCU\\Software\\Microsoft\\Office\\" + app().Version + "\\PowerPoint\\Options\\DisplayMonitor"; } catch (e) { return run(); }
+  try { old = sh.RegRead(key); had = true; } catch (e) {}
+  try { sh.RegWrite(key, device, "REG_SZ"); } catch (e) { return run(); }
+  try { return run(); } finally {
+    try { if (had) sh.RegWrite(key, old, "REG_SZ"); else sh.RegDelete(key); } catch (e) {}
+  }
+}
+
+function start(path, slide, windowed, monitor) {
   // End what's showing first: ending a show closes a presentation opened without a window,
   // and it may be this very one.
   end();
@@ -174,7 +188,7 @@ function start(path, slide, windowed) {
   ss.RangeType = 1;                       // ppShowAll
   ss.AdvanceMode = 2;                     // ppSlideShowUseSlideTimings
   forget();
-  var w = ss.Run();
+  var w = withMonitor(windowed ? null : monitor, function () { return ss.Run(); });
   if (slide && slide > 1) { try { w.View.GotoSlide(slide); } catch (e) {} }
   return state();
 }
@@ -357,6 +371,6 @@ while (!WScript.StdIn.AtEndOfStream) {
     var result = fn.apply(null, msg.args || []);
     WScript.StdOut.WriteLine(json({ id: msg.id, ok: true, result: result === undefined ? null : result }));
   } catch (e) {
-    WScript.StdOut.WriteLine(json({ id: msg ? msg.id : 0, ok: false, error: String(e.message || e) }));
+    WScript.StdOut.WriteLine(json({ id: msg ? msg.id : 0, ok: false, error: String(e.message || e.description || ("error " + (e.number >>> 0).toString(16))) }));
   }
 }

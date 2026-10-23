@@ -312,3 +312,21 @@ body.dragging .drop-zone { display: grid; }
 .link-request code { font: 700 22px Consolas, monospace; letter-spacing: .12em; color: var(--gold); flex: none; }
 .lr-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .lr-actions button { flex: 1 1 auto; }
+
+/* Trusted phones in the Remote dialog */
+.r-devices { margin: 12px 0; }
+.r-devices > b { display: block; font-size: 13px; margin-bottom: 6px; }
+.r-devices ul { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 10px; }
+.r-devices li { display: flex; align-items: center; gap: 10px; padding: 6px 8px 6px 12px; }
+.r-devices li + li { border-top: 1px solid var(--line); }
+.r-devices li svg { width: 16px; height: 16px; flex: none; opacity: .7; }
+.r-devices li span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.r-devices li small { font-size: 12px; opacity: .75; }
+.r-devices li small.live { color: #30a46c; opacity: 1; }
+
+/* "No internet here?": the Wi-Fi page */
+.r-lan { border: 1px solid var(--line); border-radius: 10px; padding: 0 12px; margin-top: 12px; }
+.r-lan summary { cursor: pointer; padding: 10px 0; font-weight: 600; font-size: 13px; color: var(--muted); }
+.r-lan[open] { padding-bottom: 12px; }
+.r-lan .r-grid { grid-template-columns: 140px minmax(0, 1fr); }
+.r-lan code { display: block; font-size: 12px; word-break: break-all; }
