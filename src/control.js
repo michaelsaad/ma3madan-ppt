@@ -685,7 +685,7 @@ $('settingsBtn').onclick = settingsModal;
 $('aboutBtn').onclick = async () => {
   const v = await api.appVersion();
   modal(`<h3><img src="assets/app-128.png" alt="">${esc(t('appName'))} <span class="muted" style="font-weight:400;font-size:13px">${esc(v)}</span></h3>
-    <p>${esc(t('aboutName'))}</p>
+    ${t('aboutName').split('\n').map(l => `<p>${esc(l)}</p>`).join('')}
     <p>${esc(t('aboutText'))}</p>
     <ul><li>${esc(t('aboutF1'))}</li><li>${esc(t('aboutF2'))}</li><li>${esc(t('aboutF3'))}</li><li>${esc(t('aboutF4'))}</li></ul>
     <p id="mUpdateStatus" class="muted" aria-live="polite"></p>

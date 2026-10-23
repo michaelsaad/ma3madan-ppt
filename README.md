@@ -26,7 +26,7 @@ Running slides for a meeting, a church service or a class usually means juggling
 
 **Ma3madan PPT keeps PowerPoint for what it does best and gives you the rest.** PowerPoint itself shows the slides on the projector, so animations, transitions, videos, fonts and links all work exactly as the author made them. Everything around it is on your laptop: your presentations, their sections, a grid of every slide, and the presenter view. Your phone is a remote that can do all of it too.
 
-*Ma3madan* (المعمدان) means "the Baptist". The app was originally made for **St. John the Baptist Church in Qalyub, Al-Qalyubia, Egypt**. It's free for anyone to use, for anything. It has a sister app for videos: [Ma3madan Play](https://github.com/michaelsaad/ma3madan-play).
+*Ma3madan* (المعمدان) is named after St. John the Baptist. To the glory of God’s name, made for **St. John the Baptist Church in Qalyub, Al-Qalyubia, Egypt**. Free and open source, for any ministry and any work. It has a sister app for videos: [Ma3madan Play](https://github.com/michaelsaad/ma3madan-play).
 
 ## Features
 
