@@ -7,6 +7,7 @@
 let remoteOn = false;
 let link = { on: false };
 let lanOpen = false;
+let lanNet = 0; // which network's code the Wi-Fi page shows
 
 function renderRemoteBtn() {
   $('remoteBtn').classList.toggle('on', remoteOn);
@@ -62,12 +63,13 @@ function devicesHtml() {
   if (!list.length) return '';
   return `<div class="r-devices"><b>${esc(t('phonesTitle'))}</b><ul>${list.sort((a, b) => (b.seen || 0) - (a.seen || 0)).map(d => {
     const live = (link.phones || []).find(p => p.deviceId === d.id);
-    return `<li><svg><use href="#i-phone"/></svg><span dir="auto">${esc(d.name)}</span>
+    return `<li><svg><use href="#i-phone"/></svg><span dir="auto" data-rename="${esc(d.id)}" title="${esc(t('phoneRename'))}">${esc(d.name)}</span>
       <small class="${live ? 'live' : 'muted'}">${esc(live ? (live.route === 'relay' ? t('phoneRelay') : t('phoneConnected')) : t('phoneSeen', { d: ago(d.seen || d.added) }))}</small>
       <button class="ghost" data-forget="${esc(d.id)}">${esc(t('phoneForget'))}</button></li>`;
   }).join('')}</ul></div>`;
 }
 async function renderRemoteModal() {
+  if (document.activeElement?.classList?.contains('dev-rename')) return; // renaming a phone: don't redraw under the typing
   const body = $('remoteBody');
   if (!body) return;
   let html;
@@ -79,7 +81,12 @@ async function renderRemoteModal() {
   } else {
     const qr = link.pairUrl ? await api.qrSvg(link.pairUrl) : '';
     const n = (link.phones?.length || 0) + (link.wifiPages || 0);
-    const lan = link.lan || {};
+  const lan = link.lan || {};
+  const nets = lan.nets || [];
+  if (lanNet >= nets.length) lanNet = 0;
+  const net = nets[lanNet];
+  const netName = n => (n.hotspot ? t('lanHotspot') : n.name) + ' · ' + n.address;
+  const netChips = nets.length > 1 ? `<div class="lan-nets">${nets.map((n, i) => `<button class="${i === lanNet ? 'on' : ''}" data-net="${i}" dir="ltr">${esc(netName(n))}</button>`).join('')}</div>` : '';
     const shared = (link.apps || []).includes('play');
     html = `<h3><svg><use href="#i-phone"/></svg>${esc(t('remoteTitle'))}<span class="r-live">${esc(t('remoteIsOn'))}</span></h3>
       <div class="r-grid">
@@ -96,10 +103,11 @@ async function renderRemoteModal() {
       <details class="r-lan" ${lanOpen ? 'open' : ''}>
         <summary>${esc(t('lanTitle'))}</summary>
         <div class="r-grid">
-          <div class="qr">${lan.qr || ''}</div>
+          <div class="qr">${net?.qr || ''}</div>
           <div class="r-info">
-            <p class="muted">${esc(t('lanText'))}</p>
-            ${lan.urls?.length ? `<code dir="ltr">${esc(lan.urls[0].replace(/\?k=.*/, ''))}</code>` : `<p class="warn-text">${esc(t('remoteNoNet'))}</p>`}
+            <p class="muted">${esc(t(nets.length > 1 ? 'lanTextNets' : 'lanText'))}</p>
+            ${netChips}
+            ${net ? `<code dir="ltr">${esc(net.url.replace(/\?k=.*/, ''))}</code>` : `<p class="warn-text">${esc(t('remoteNoNet'))}</p>`}
             <p class="muted">${esc(t('remoteFirewall'))}</p>
           </div>
         </div>
@@ -116,6 +124,7 @@ async function renderRemoteModal() {
   body.innerHTML = html;
   for (const b of body.querySelectorAll('[data-close]')) b.onclick = closeModal;
   body.querySelector('details')?.addEventListener('toggle', e => { lanOpen = e.target.open; });
+  for (const b of body.querySelectorAll('[data-net]')) b.onclick = () => { lanNet = Number(b.dataset.net); renderRemoteModal(); };
   $('rOn')?.addEventListener('click', () => {
     remoteOn = true; api.setSetting('remoteOn', true);
     renderRemoteBtn(); renderRemoteModal(); pushRemote();
@@ -124,6 +133,18 @@ async function renderRemoteModal() {
     remoteOn = false; api.setSetting('remoteOn', false);
     renderRemoteBtn(); renderRemoteModal();
   });
+  // Tap a phone's name to rename it ("Mina's iPhone"): Enter or leaving the box saves it.
+  for (const n of body.querySelectorAll('[data-rename]')) n.onclick = () => {
+    const d = (link.devices || []).find(x => x.id === n.dataset.rename);
+    if (!d) return;
+    const input = document.createElement('input');
+    input.className = 'dev-rename'; input.value = d.name; input.maxLength = 24; input.dir = 'auto';
+    n.replaceWith(input); input.focus(); input.select();
+    let done = false;
+    const save = () => { if (done) return; done = true; input.blur(); body.dataset.html = ''; const v = input.value.trim(); if (v && v !== d.name) LinkPage.op({ op: 'rename', id: d.id, name: v }); else renderRemoteModal(); };
+    input.onkeydown = e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') { done = true; body.dataset.html = ''; renderRemoteModal(); } };
+    input.onblur = save;
+  };
   for (const b of body.querySelectorAll('[data-forget]')) b.onclick = () => {
     const d = (link.devices || []).find(x => x.id === b.dataset.forget);
     if (d && confirm(t('phoneForgetQ', { n: d.name }))) LinkPage.op({ op: 'forget', id: d.id });
