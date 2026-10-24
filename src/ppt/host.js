@@ -147,9 +147,18 @@ function exportOne(path, n, file, width, height) {
   return true;
 }
 
+// No "Save changes?" from PowerPoint for what the app did. Its own copies are read-only (nothing
+// to save); a presentation the user opened in PowerPoint goes back to how it was before the show
+// (still "unsaved" if it had changes of the user's own).
+var cleanBefore = {}; // presentation → it had no unsaved changes before the show
+function markClean(d) {
+  try { if (d.ReadOnly || cleanBefore[key(d.FullName)]) d.Saved = -1; } catch (e) {}
+}
+
 function close(path) {
   var d = null;
   try { d = deck(path); } catch (e) { return false; }
+  markClean(d);
   try { d.Close(); } catch (e) {}
   delete decks[key(path)];
   return true;
@@ -182,6 +191,7 @@ function start(path, slide, windowed, monitor) {
   // and it may be this very one.
   end();
   var d = ensure(path);
+  try { cleanBefore[key(d.FullName)] = !!d.Saved; } catch (e) {}
   var ss = d.SlideShowSettings;
   ss.ShowType = windowed ? 2 : 1;        // ppShowTypeWindow : ppShowTypeSpeaker (full screen)
   try { ss.ShowPresenterView = 0; } catch (e) {} // our app is the presenter view
@@ -190,13 +200,21 @@ function start(path, slide, windowed, monitor) {
   forget();
   var w = withMonitor(windowed ? null : monitor, function () { return ss.Run(); });
   if (slide && slide > 1) { try { w.View.GotoSlide(slide); } catch (e) {} }
+  markClean(d); // the show settings above count as a change for PowerPoint
   return state();
 }
 
 function end() {
   forget();
   var a = app();
-  while (a.SlideShowWindows.Count) { try { a.SlideShowWindows.Item(1).View.Exit(); } catch (e) { break; } }
+  while (a.SlideShowWindows.Count) {
+    var w = a.SlideShowWindows.Item(1), p = null;
+    try { p = w.Presentation; } catch (e) {}
+    // Pen marks would make PowerPoint ask "Keep your ink annotations?": wipe them first.
+    try { w.View.EraseDrawing(); } catch (e) {}
+    try { w.View.Exit(); } catch (e) { break; }
+    if (p) markClean(p);
+  }
   return true;
 }
 
@@ -347,7 +365,7 @@ function namedShow(name, from, at) {
 // On exit: close what we opened, and PowerPoint too if nothing else is open in it.
 function quit(closeApp) {
   end();
-  for (var k in decks) if (decks.hasOwnProperty(k)) { try { decks[k].Close(); } catch (e) {} }
+  for (var k in decks) if (decks.hasOwnProperty(k)) { markClean(decks[k]); try { decks[k].Close(); } catch (e) {} }
   decks = {};
   if (closeApp && pp && pp.Presentations.Count == 0) { try { pp.Quit(); } catch (e) {} }
   return true;

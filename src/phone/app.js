@@ -846,6 +846,11 @@ function setFull(on, by = 'button') {
 }
 addEventListener('popstate', () => { if (fullHistory) { fullHistory = false; setFull(false); } });
 addEventListener('resize', applyTurn);
+// The app stays upright: the installed app is locked by its manifest; this asks the phone too
+// (some allow it without reinstalling). Full screen shows the slide sideways by itself.
+const lockUpright = () => { try { screen.orientation?.lock?.('portrait').catch(() => {}); } catch {} };
+lockUpright();
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') lockUpright(); });
 window.visualViewport?.addEventListener('resize', applyTurn);
 $('pFullBtn').onclick = e => { e.stopPropagation(); setFull(true); };
 $('pFullClose').onclick = e => { e.stopPropagation(); setFull(false); };
