@@ -14,7 +14,11 @@ let selected = 1;         // selected slide in the grid
 let show = { running: false };
 let displays = { displays: [], showOn: 'auto' };
 let pvGridOpen = false;
-const collapsed = new Set(JSON.parse(localStorage.getItem('collapsedSections') || '[]'));
+// Sections start closed, the one on the projector marked; open them by hand. Every time "All
+// slides" opens, or another presentation shows, they're all closed again.
+const expandedSecs = new Set();
+let gridDeck = '';
+try { localStorage.removeItem('collapsedSections'); } catch {}
 
 const deckOf = p => open.find(d => same(d.path, p));
 const activeDeck = () => deckOf(active);
@@ -296,11 +300,13 @@ function renderGrid(box, d, opts = {}) {
   box.style.setProperty('--ratio', `${d.width}/${d.height}`);
   const secs = sectionsOf(d);
   const curSec = isLive(d) ? sectionOfSlide(d, show.slide) : null;
+  if (box.id === 'grid' && gridDeck !== d.path.toLowerCase()) { gridDeck = d.path.toLowerCase(); expandedSecs.clear(); }
   for (const sec of secs) {
     const key = d.path.toLowerCase() + '|' + sec.index;
+    const named = !!(sec.name || secs.length > 1);
     const wrap = document.createElement('div');
-    wrap.className = 'sec' + (collapsed.has(key) ? ' collapsed' : '') + (curSec === sec || curSec?.index === sec.index ? ' current-sec' : '');
-    if (sec.name || secs.length > 1) {
+    wrap.className = 'sec' + (named && !expandedSecs.has(key) ? ' collapsed' : '') + (curSec === sec || curSec?.index === sec.index ? ' current-sec' : '');
+    if (named) {
       const head = document.createElement('div');
       head.className = 'sec-head';
       head.innerHTML = `<svg class="caret"><use href="#i-caret"/></svg><b>${esc(sec.name || t('untitledSection'))}</b><span class="count">${esc(sec.count === 1 ? t('oneSlide') : t('slidesCount', { n: sec.count }))}</span>
@@ -311,9 +317,8 @@ function renderGrid(box, d, opts = {}) {
           else startShow(sec.first);
           return;
         }
-        collapsed.has(key) ? collapsed.delete(key) : collapsed.add(key);
-        localStorage.setItem('collapsedSections', JSON.stringify([...collapsed]));
-        wrap.classList.toggle('collapsed');
+        expandedSecs.has(key) ? expandedSecs.delete(key) : expandedSecs.add(key);
+        wrap.classList.toggle('collapsed', !expandedSecs.has(key));
       };
       wrap.appendChild(head);
     }
@@ -445,7 +450,11 @@ function renderStrip(d) {
   box.querySelector('.card.current')?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
 }
 
-function openPvGrid() { pvGridOpen = true; $('pvGrid').hidden = false; renderGrid($('pvGridBody'), activeDeck(), { closeGrid: true }); $('pvGridBody').querySelector('.card.current')?.scrollIntoView({ block: 'center' }); }
+function openPvGrid() {
+  pvGridOpen = true; expandedSecs.clear();
+  $('pvGrid').hidden = false; renderGrid($('pvGridBody'), activeDeck(), { closeGrid: true });
+  $('pvGridBody').querySelector('.current-sec')?.scrollIntoView({ block: 'center' });
+}
 function closePvGrid() { pvGridOpen = false; $('pvGrid').hidden = true; }
 
 // Click on the live slide → the same spot on the projector (links, buttons, videos, triggers).

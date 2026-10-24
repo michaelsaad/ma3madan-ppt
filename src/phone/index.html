@@ -206,10 +206,16 @@
   .pg-secs button { width: 100%; min-height: 50px; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 12px; border: 0; border-radius: 10px; background: transparent; text-align: start; }
   .pg-secs button b { font-size: 14px; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pg-secs button small { font-size: 11.5px; color: var(--muted); }
-  .pg-secs button.here { background: #16274a; box-shadow: inset 3px 0 0 var(--gold); }
+  .pg-secs button.here { box-shadow: inset 3px 0 0 var(--gold); }
+  .pg-secs button.open { background: #16274a; }
   .pg-secs button.here b { color: var(--gold); }
   .pg-main { flex: 1; min-width: 0; overflow-y: auto; padding: 4px 14px 18px; }
-  .pg-sec h4 { margin: 14px 2px 8px; font-size: 13px; font-weight: 600; color: #c9d2e3; }
+  .pg-head { width: 100%; min-height: 44px; margin-top: 6px; justify-content: flex-start; gap: 8px; padding: 0 8px; border: 0; border-radius: 10px; background: transparent; font-size: 14px; font-weight: 600; color: #c9d2e3; }
+  .pg-head b { flex: 1; text-align: start; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pg-head small { color: var(--muted); font-weight: 400; font-size: 12px; }
+  .pg-head.here { color: var(--gold); background: rgba(242, 184, 75, .08); }
+  .pg-sec.open .pg-head .caret { transform: none; }
+  .pg-sec.open .pg-tiles { margin: 4px 2px 10px; }
   .pg-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px 12px; }
   .pg-tile { flex-direction: column; align-items: stretch; gap: 5px; min-height: 0; min-width: 0; padding: 0; border: 0; border-radius: 0; background: transparent; }
   .pg-pic { display: block; aspect-ratio: var(--r, 16/9); border-radius: 4px; background: #000 center/contain no-repeat; outline: 1px solid #26324a; }
