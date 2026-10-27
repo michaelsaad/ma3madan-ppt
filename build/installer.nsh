@@ -11,4 +11,6 @@
 
 !macro customUnInstall
   nsExec::Exec 'netsh advfirewall firewall delete rule name="Ma3madan PPT"'
+  ; It started with Windows (tray.js): not any more.
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Ma3madan PPT"
 !macroend

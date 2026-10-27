@@ -50,6 +50,7 @@ Running slides for a meeting, a church service or a class usually means juggling
 - **Edit while you present.** Presentations open read-only in the background, so the file stays untouched and you can still open it in PowerPoint to fix a typo (**⋯** → **Edit in PowerPoint**).
 - **Choose the screen** for the show (**This screen / Screen 2 ▾**), or let the app pick the projector by itself. The show fills that screen exactly, whatever its resolution or scaling (125 %, 150 %…), with no taskbar over it, also through HDMI splitters that feed several screens.
 - **English and Arabic** interface (Arabic is right-to-left), **light and dark** themes that follow Windows, and every shortcut one `?` away.
+- **Always ready, in the tray.** The window's ✕ keeps the app running next to the clock, so the phone remote stays connected; click the icon to open it, right-click it to quit. It also starts with Windows, hidden there (turn that off in Task Manager → Startup apps).
 - **Opens presentations from Explorer** (`.pptx`, `.ppt`, `.ppsx`, `.pps`, `.pptm`, `.ppsm`).
 
 ![All slides by section](docs/slides.png)

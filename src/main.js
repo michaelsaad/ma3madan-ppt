@@ -14,6 +14,7 @@ const slideLinks = require('./ppt/links');
 const updater = require('./updater');
 const qrcode = require('./vendor/qrcode');
 const { createHub } = require('./hub');
+const { createTray } = require('./tray');
 
 const APP_NAME = 'Ma3madan PPT';
 const DECK_RE = /\.(pptx|ppt|ppsx|pps|pptm|ppsm)$/i;
@@ -26,9 +27,15 @@ if (process.env.MP_SELFTEST) {
   app.setPath('appData', process.env.MP_SELFTEST_DIR); // the shared phone link (hub.js) too: never the real one
   app.setPath('userData', process.env.MP_SELFTEST_DIR);
 }
+// MP_PROFILE=<dir>: the app as usual, in a throwaway profile (tests).
+if (process.env.MP_PROFILE) {
+  app.setPath('appData', process.env.MP_PROFILE);
+  app.setPath('userData', process.env.MP_PROFILE);
+}
 if (!app.requestSingleInstanceLock()) app.quit();
 
 let controlWin = null;
+let tray = null;
 
 // ---------- persistence ----------
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
@@ -50,8 +57,7 @@ let pendingOpen = process.argv.slice(1).filter(a => DECK_RE.test(a) && fs.exists
 app.on('second-instance', (_e, argv) => {
   const files = argv.slice(1).filter(a => DECK_RE.test(a) && fs.existsSync(a));
   if (controlWin) {
-    if (controlWin.isMinimized()) controlWin.restore();
-    controlWin.focus();
+    tray?.show(); // opened again (Start menu, a presentation from Explorer): back from the tray
     if (files.length) controlWin.webContents.send('open-files', files);
   }
 });
@@ -408,7 +414,8 @@ function createControl() {
   });
   controlWin.setMenu(null);
   if (settings.controlMaximized ?? true) controlWin.maximize();
-  controlWin.once('ready-to-show', () => { if (!process.env.MP_SELFTEST_HIDDEN) controlWin.show(); });
+  // Started with Windows: stays in the tray until opened.
+  controlWin.once('ready-to-show', () => { if (!process.env.MP_SELFTEST_HIDDEN && !tray?.startHidden) controlWin.show(); });
   controlWin.loadFile(path.join(__dirname, 'control.html'));
 
   let saveTimer;
@@ -530,7 +537,10 @@ function checkPowerPointRunning() {
 let hub = null;
 app.whenReady().then(() => {
   checkPowerPointRunning();
+  // ✕ keeps the app running in the tray (a show goes on, the phone still reaches it).
+  tray = createTray({ title: APP_NAME, icon: path.join(__dirname, 'assets', 'app-256.png'), settings, save: saveSettings, window: () => controlWin });
   createControl();
+  tray.attach(controlWin);
   // The phone link, shared with Ma3madan Play when both are open (hub.js).
   hub = createHub({ app: 'ppt', title: APP_NAME, version: app.getVersion(), window: () => controlWin, computerName: () => require('os').hostname(), phoneDir: path.join(__dirname, 'phone') });
   controlWin.webContents.on('did-finish-load', () => hub.pageReady());
