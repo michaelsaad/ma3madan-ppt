@@ -172,6 +172,41 @@ function pushRemote() {
   if (!remoteOn) return;
   clearTimeout(remoteTimer);
   remoteTimer = setTimeout(() => LinkPage.send({ type: 'state', state: remoteState() }), 60);
+  scheduleLiveShots();
+}
+
+// What the audience sees, as a picture for the phones: the slide with its animations as far as
+// they've gone (the slide pictures show the finished slide). Taken from the live view of the show a
+// moment after each step, and again once a longer animation has played. Not while it's black or
+// white: the phone shows the slide then, with a band.
+let shotKey = '', shotTimers = [];
+function scheduleLiveShots() {
+  if (!show.running) { shotKey = ''; return; }
+  if (!((link.phones?.length || 0) + (link.wifiPages || 0))) return; // no phone to send it to
+  const key = [show.path, show.slide, show.click || 0, show.state].join('|');
+  if (key === shotKey) return;
+  shotKey = key;
+  for (const tm of shotTimers) clearTimeout(tm);
+  if (show.state === 3 || show.state === 4) return;
+  shotTimers = [450, 1400].map(ms => setTimeout(() => {
+    if (key !== shotKey) return;
+    const data = liveShot();
+    if (data) LinkPage.send({ type: 'thumb', id: `live|${show.slide}|${show.click || 0}|${show.path}`, v: Date.now(), data });
+  }, ms));
+}
+// The slide out of the live view (the show window has the screen's shape, the slide sits inside).
+function liveShot() {
+  const v = $('live'), d = deckOf(show.path);
+  if (!d || !$('current').classList.contains('has-live') || !v.videoWidth || !v.videoHeight) return null;
+  const vr = v.videoWidth / v.videoHeight, sr = d.width / d.height;
+  let sw = v.videoWidth, sh = v.videoHeight, sx = 0, sy = 0;
+  if (vr > sr) { sw = sh * sr; sx = (v.videoWidth - sw) / 2; } else if (vr < sr) { sh = sw / sr; sy = (v.videoHeight - sh) / 2; }
+  const w = Math.min(960, Math.round(sw)), h = Math.round(w / sr);
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  c.getContext('2d').drawImage(v, sx, sy, sw, sh, 0, 0, w, h);
+  // A data channel message holds about 256 KB: a lighter picture when the slide is busy.
+  for (const q of [0.72, 0.55, 0.4]) { const data = c.toDataURL('image/jpeg', q); if (data.length < 200000 || q === 0.4) return data; }
 }
 // What the phone can do with this version (a phone app newer or older than this one adapts).
 const REMOTE_CAPS = ['program', 'preview', 'back', 'screen', 'resume'];

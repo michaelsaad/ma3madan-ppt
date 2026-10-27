@@ -752,7 +752,16 @@ function pthumb(n, size, deck = pst.deck) {
   if (conns.ppt.send({ type: 'thumb', id, v: deck.v })) pthumbs.set(k, null);
   return null;
 }
+// The computer also sends a picture of the projector after each step ("live|slide|click|path"):
+// the slide with its animations as far as they've gone. Shown while it's the step on the screen.
+let liveShot = null;
 function pptThumbArrived(m) {
+  if (m.id.startsWith('live|')) {
+    const [, slide, click, ...path] = m.id.split('|');
+    if (!liveShot || m.v >= liveShot.v) liveShot = { slide: Number(slide), click: Number(click), path: path.join('|'), v: m.v, data: m.data };
+    renderPpt();
+    return;
+  }
   pthumbs.set(m.id + ':' + m.v, m.data);
   for (const el of document.querySelectorAll(`[data-th="${CSS.escape(m.id)}"]`)) el.style.backgroundImage = `url('${m.data}')`;
   if ($('pSlideImg').dataset.id === m.id) $('pSlideImg').src = m.data;
@@ -777,7 +786,9 @@ function renderPpt() {
   box.classList.toggle('live', !!live);
   box.classList.toggle('light', !!live && s.state === 4);
   const img = $('pSlideImg');
-  if (d && n) {
+  const shot = live && s.state !== 3 && s.state !== 4 && liveShot && liveShot.path === s.path && liveShot.slide === s.slide && liveShot.click <= (s.click || 0) ? liveShot.data : null; // (an earlier step of this slide until the new picture comes)
+  if (shot) { img.dataset.id = 'live'; if (img.src !== shot) img.src = shot; }
+  else if (d && n) {
     const id = `${n}|big|${d.path}`;
     img.dataset.id = id;
     const data = pthumb(n, 'big');

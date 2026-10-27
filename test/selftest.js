@@ -57,6 +57,8 @@ module.exports = async function selftest(win, { app, ppt }) {
     await wait(300);
     await shot('4-animation-step');
     log('next / animation step ok');
+    // The phone's picture of the projector, with the animation as far as it has gone.
+    if (await js('document.getElementById("current").classList.contains("has-live")')) assert.ok((await js('liveShot()') || '').startsWith('data:image/jpeg'));
 
     await js('openPvGrid()');
     await wait(300);
