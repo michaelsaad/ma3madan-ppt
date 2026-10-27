@@ -113,11 +113,6 @@ header button, header .tab { -webkit-app-region: no-drag; }
 .crumb .named { color: var(--gold); }
 .on-air-return { display: none; flex: none; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 6px; background: var(--gold); color: #1b1300; }
 body.previewing .on-air-return { display: inline-block; }
-.black-pill { -webkit-app-region: no-drag; gap: 8px; padding: 5px 6px 5px 12px; background: #000; border-color: var(--live); color: #fff; font-size: 13px; }
-html[dir=rtl] .black-pill { padding: 5px 12px 5px 6px; }
-.black-pill:hover { background: #000; border-color: var(--live); }
-.black-pill .sq { width: 12px; height: 12px; border-radius: 3px; background: #000; box-shadow: 0 0 0 2px #fff; }
-.black-pill b { padding: 2px 10px; border-radius: 6px; background: var(--live); color: #fff; }
 .chain { padding: 5px 10px; font-size: 12.5px; max-width: 260px; }
 .chain span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chain svg { width: 16px; height: 16px; }

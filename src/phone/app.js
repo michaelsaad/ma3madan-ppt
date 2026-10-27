@@ -48,7 +48,7 @@ const S = {
     notes: 'Notes', noNotes: 'No notes on this slide', sections: 'Sections', slides: '{n} slides', oneSlide: '1 slide',
     presentations: 'Presentations', nextSlide: 'Next', openNow: 'Open', untitled: 'Untitled section', tapHint: 'Tap the slide to click on it',
     animStep: 'Animation {a} of {b}', endOfShow: 'End of the show',
-    blackOffBtn: 'Turn off black', blackBand: 'The audience sees black: move on and get ready, then turn it off.',
+    blackBand: 'The audience sees black (moving on turns it off)', clickOffHint: 'A tap on the slide does nothing now (swipe still moves).',
     partShow: 'Show', program: 'Program', programEmpty: 'Add presentations to the program on the computer (+ in Recent).',
     reconnecting: 'Connection lost: reconnecting…', notSent: 'Not sent: not connected',
     clickMode: 'Click on slide', clickHint: 'Swipe the slide to move. Turn on “Click on slide” to press links or videos on it.', clickOnHint: 'A tap on the slide clicks it on the projector.',
@@ -98,7 +98,7 @@ const S = {
     notes: 'الملاحظات', noNotes: 'لا توجد ملاحظات لهذه الشريحة', sections: 'الأقسام', slides: '{n} شريحة', oneSlide: 'شريحة واحدة',
     presentations: 'العروض', nextSlide: 'التالي', openNow: 'فتح', untitled: 'قسم بدون اسم', tapHint: 'المس الشريحة لتضغط عليها في البروجكتور',
     animStep: 'حركة {a} من {b}', endOfShow: 'نهاية العرض',
-    blackOffBtn: 'إلغاء الأسود', blackBand: 'الحضور يرون شاشة سوداء: تنقّل وجهّز، ثم ألغِ الأسود.',
+    blackBand: 'الحضور يرون شاشة سوداء (الانتقال يلغيها)', clickOffHint: 'الضغط على الشريحة لا يفعل شيئًا الآن (السحب ما زال يتنقل).',
     partShow: 'العرض', program: 'البرنامج', programEmpty: 'أضف العروض إلى البرنامج من الكمبيوتر (زر + في «الأخيرة»).',
     reconnecting: 'انقطع الاتصال: جارٍ إعادة الاتصال…', notSent: 'لم يُرسل: غير متصل',
     clickMode: 'الضغط على الشريحة', clickHint: 'اسحب الشريحة للتنقل. فعّل «الضغط على الشريحة» لتضغط على الروابط أو الفيديوهات فيها.', clickOnHint: 'الضغط على الشريحة يضغط عليها في البروجكتور.',
@@ -167,11 +167,12 @@ function linkClose() {
 const shownTab = () => (link.state === 'connected' ? currentTab : 'play');
 function renderShell() {
   const linked = link.state === 'connected';
-  document.querySelector('.tabs').hidden = !linked;
-  document.body.classList.toggle('no-tabs', !linked);
+  // Play / PPT is switched in the top bar (no bar at the bottom).
+  $('appSwitch').hidden = !linked;
+  document.querySelector('header').classList.toggle('linked', linked);
+  document.body.classList.add('no-tabs');
   $('tab-play').hidden = shownTab() !== 'play';
   $('tab-slides').hidden = shownTab() !== 'ppt';
-  if (typeof renderParts === 'function') renderParts();
 }
 function setLinkState(state, extra = {}) {
   const was = link.state;
@@ -469,7 +470,7 @@ function makeConn(kind, { onState, onThumb, failedText, pairTitle }) {
         break;
     }
     if (visible()) { renderStatus(); renderInstall(); }
-    if (kind === 'ppt' && typeof renderParts === 'function') { renderParts(); keepAwake(); }
+    if (kind === 'ppt' && typeof keepAwake === 'function') keepAwake();
   };
   c.renderLaptops = () => {
     const box = q('laptops');
@@ -661,12 +662,13 @@ $('seek').addEventListener('change', e => {
 setInterval(tickTime, 250);
 
 // ---------- Ma3madan PPT: the PowerPoint remote ----------
-// Three parts (the bottom bar): the show (what the audience sees, back/next, black, notes), the
-// sections, and the program. Looking at another presentation here (a "preview") never changes the
+// One page. At the top, always in sight: the show (the slide on the projector, where it is,
+// back/next, black/white/end). Under it the notes and the sections; the program, the recents and
+// the lists come from the side. Looking at another presentation (a "preview") never changes the
 // screen; showing it is a button, with a question when another one is on.
 let pst = {}, pat = 0;
 const pthumbs = new Map(); // "n|size|path:version" → data URL (null while asked for)
-const openSecs = new Set(); // sections opened ("path|index"): the same in the list and full screen
+const openSecs = new Set(); // sections opened ("path|index")
 const openGroups = new Set(['program', 'open']);
 const caps = k => (pst.caps || []).includes(k); // what this computer's version can do
 let lastMove = 0;
@@ -692,7 +694,7 @@ $('pAsk').addEventListener('click', e => { if (e.target === $('pAsk')) $('pAsk')
 // always when `always`: a tap on a slide of one that isn't showing).
 function startDeck(path, name, n, always) {
   const s = showOf();
-  const go = () => { psend({ action: 'start', path, n }); pview = null; setPart('show'); };
+  const go = () => { psend({ action: 'start', path, n }); pview = null; renderPpt(); scrollTo(0, 0); };
   if (s && s.path !== path) ask(t('replaceTitle'), t('replaceQ', { a: liveName(), b: name }), t('showIt'), go);
   else if (always) ask(t('startTitle'), t('startAtQ', { name, n }), t('showIt'), go);
   else go();
@@ -702,39 +704,22 @@ const liveName = () => (pst.deck && showOf() && pst.deck.path === showOf().path 
 // Looking at a presentation that isn't on the screen: its sections come from the computer to this
 // phone only (computers without that just offer to show it).
 let pview = null; // { path, name, slide, deck }
-// A tap on the slide clicks the projector only in "click mode" (off by default): a stray touch
-// never presses a link or a video in front of everyone. Swipes always move.
-let clickMode = false;
+// A tap on the slide clicks it on the projector (links, buttons, videos). The small hand in the
+// bar under the slide turns that off and on.
+let clickMode = true;
 function previewDeck(it) {
-  if (showOf() && it.path === showOf().path) { pview = null; setPart('secs'); return; }
+  closeDrawer();
+  if (showOf() && it.path === showOf().path) { pview = null; renderPpt(); return; }
   pview = { path: it.path, name: it.name, slide: it.slide || 1, deck: pst.deck && pst.deck.path === it.path ? pst.deck : null };
   if (!pview.deck && caps('preview')) conns.ppt.send({ type: 'deck', path: it.path });
-  setPart('secs');
-}
-
-// ---------- the parts ----------
-let pPart = store.get('pptPart', 'show');
-function setPart(p) {
-  if (p !== 'secs') pview = null;
-  pPart = ['show', 'secs', 'prog'].includes(p) ? p : 'show';
-  store.set('pptPart', pPart);
   renderPpt();
-  scrollTo(0, 0);
-  if (pPart === 'secs') setTimeout(() => $('pSections').querySelector('.here')?.scrollIntoView({ block: 'center' }), 50);
+  setTimeout(() => $('pPreview').scrollIntoView({ block: 'start', behavior: 'smooth' }), 50);
 }
-function renderParts() {
-  const on = shownTab() === 'ppt' && !$('p-remoteUi').hidden;
-  const nav = document.querySelector('.tabs');
-  nav.classList.toggle('ppt-mode', on);
-  for (const b of nav.querySelectorAll('.part')) { b.hidden = !on; b.classList.toggle('on', b.dataset.part === pPart); }
-  nav.querySelector('[data-tab="ppt"]').hidden = on;
-  if (on) nav.querySelector('[data-tab="play"]').classList.remove('on');
-  for (const el of document.querySelectorAll('.ppart')) el.hidden = el.dataset.part !== pPart;
-  $('pStage').hidden = pPart !== 'show';
-  $('pMini').hidden = pPart === 'show' || !(showOf() || pst.black);
-}
-for (const b of document.querySelectorAll('.tabs .part')) b.onclick = () => setPart(b.dataset.part);
-$('pMiniWhere').onclick = () => setPart('show');
+const openDrawer = () => { renderPptDecks(); $('pDrawer').hidden = false; };
+const closeDrawer = () => { $('pDrawer').hidden = true; };
+$('pProgBtn').onclick = openDrawer;
+$('pDrawerClose').onclick = closeDrawer;
+$('pDrawer').addEventListener('click', e => { if (e.target === $('pDrawer')) closeDrawer(); });
 
 // ---------- the connection dropped: say so, over the remote ----------
 let lostNote = '', lostNoteTimer;
@@ -774,25 +759,22 @@ function pptThumbArrived(m) {
 }
 
 const showOf = () => (pst.show?.running ? pst.show : null);
-let fullEndTimer = null;
 function renderPpt() {
   if (pst.lang && pst.lang !== lang && currentTab === 'ppt') setLang(pst.lang);
   const s = showOf(), d = pst.deck;
   // The slide on the projector (or, before the show, the presentation on the computer's screen).
   const live = s && d && d.path === s.path;
-  // Black, held on the computer: the audience sees black until it's turned off here or there,
-  // while this phone still shows the slides (to move on and get the next one ready).
-  const black = !!pst.black || (!!live && s.state === 3);
+  // PowerPoint's black (moving on clears it): this phone still shows the slide, with a band.
+  const black = !!live && s.state === 3;
   $('pDeck').textContent = d ? d.name : t('notPresenting');
   const st2 = $('pStatus');
-  st2.className = 'status' + (black || (live && s.state === 4) ? ' standby' : live ? ' live' : '');
-  st2.textContent = black ? t('blackOn') : live ? (s.state === 4 ? t('whiteOn') : t('presenting')) : t('notPresenting');
+  st2.className = 'status' + (live ? (s.state === 3 || s.state === 4 ? ' standby' : ' live') : '');
+  st2.textContent = live ? (s.state === 3 ? t('blackOn') : s.state === 4 ? t('whiteOn') : t('presenting')) : t('notPresenting');
   $('pBlackBand').hidden = !black;
   const n = live ? s.slide : 1;
   const box = $('pSlide');
   if (d) box.style.setProperty('--r', String(d.ratio));
   box.classList.toggle('live', !!live);
-  box.classList.toggle('dark', !!live && s.state === 3 && !caps('blackHold'));
   box.classList.toggle('light', !!live && s.state === 4);
   const img = $('pSlideImg');
   if (d && n) {
@@ -804,12 +786,11 @@ function renderPpt() {
   $('pEmpty').hidden = !!d;
   const secs = d?.sections || [];
   const sec = live ? secs.find(x => n >= x.first && n < x.first + x.count) : null;
-  $('pPos').textContent = live ? t('slideOf', { n: s.slide, c: s.count }) : d ? t('slides', { n: d.slides.length }) : '';
-  $('pSec').textContent = sec?.name || '';
-  $('pStep').textContent = live && s.clicks ? t('animStep', { a: s.click, b: s.clicks }) : '';
-  $('pHint').hidden = !live;
-  $('pHint').textContent = clickMode ? t('clickOnHint') : t('clickHint');
+  $('pStagePos').textContent = live ? `${s.slide} / ${s.count}` + (s.clicks ? ` · ✦${s.click}/${s.clicks}` : '') : '';
+  $('pStageSec').textContent = sec?.name || '';
   $('pClickMode').hidden = !live;
+  $('pClickMode').setAttribute('aria-pressed', String(clickMode));
+  $('pClickMode').title = clickMode ? t('clickOnHint') : t('clickHint');
   // The way back: out of a custom show, or to the presentation a link came from.
   const chain = pst.chain || [];
   const back = !live || !caps('back') ? '' : pst.named ? t('leaveNamed', { name: pst.named }) : chain.length ? t('backTo', { name: chain[chain.length - 1].name }) : '';
@@ -818,37 +799,21 @@ function renderPpt() {
   // Buttons
   $('pPlayRow').hidden = !live;
   $('pStartRow').hidden = !!live || !d;
+  $('pControls').hidden = !live;
   $('pBlackBtn').classList.toggle('on', black);
-  $('pBlackBtn').querySelector('span').textContent = black ? t('blackOffBtn') : t('black');
   $('pWhiteBtn').classList.toggle('on', !!live && s.state === 4);
-  $('pFullBlack').classList.toggle('on', black);
-  // Black works with no show too (newer computer versions); white and end only during one.
-  $('pControls').hidden = !live && !caps('blackHold');
-  $('pWhiteBtn').hidden = !live;
-  $('pEndBtn').hidden = !live;
   // Notes
   $('pNotesBox').hidden = !live;
+  $('pNotesBox').classList.toggle('closed', !store.get('pnotesOpen', true));
   $('pNotes').textContent = pst.notes || t('noNotes');
   $('pNotes').classList.toggle('empty', !pst.notes);
   // The next slide's big picture comes ahead, so moving on shows it at once.
   if (live && n < d.slides.length) pthumb(n + 1, 'big');
-  $('pFullPos').textContent = live ? `${s.slide} / ${s.count}` : '';
-  $('pStagePos').textContent = live ? t('slideOf', { n: s.slide, c: s.count }) : '';
-  $('pStageSec').textContent = sec?.name || '';
-  // What's on the screen, on the other parts.
-  $('pMiniStatus').className = 'status' + (live ? (s.state === 3 || s.state === 4 ? ' standby' : ' live') : '');
-  $('pMiniStatus').textContent = st2.textContent;
-  $('pMiniDeck').textContent = live ? d.name : liveName();
-  $('pMiniPos').textContent = s ? (sec?.name ? sec.name + ' · ' : '') + `${s.slide} / ${s.count}` : '';
-  // Full screen closes by itself only when the show has really ended (PowerPoint reports a
-  // moment between slides that looks like "not running"); else only ✕ or Back close it.
-  clearTimeout(fullEndTimer);
-  if (!live && document.body.classList.contains('pfull')) fullEndTimer = setTimeout(() => { if (!showOf()) setFull(false); }, 2000);
   renderPptSections();
-  renderPptDecks();
-  renderParts();
+  if (!$('pDrawer').hidden) renderPptDecks();
   renderStatus();
   tickPptTimer();
+  setTimeout(measureHeader, 0);
 }
 
 // ---------- the sections: the one on the screen, or one looked at ----------
@@ -874,7 +839,6 @@ function renderPptSections() {
   }
   $('pSectionsDeck').textContent = d ? d.name : '';
   const box = $('pSections');
-  $('pSectionsHead').hidden = !d;
   if (!d) { box.innerHTML = view && caps('preview') ? `<p class="phint">${esc(t('loadingDeck'))}</p>` : !view ? `<p class="phint">${esc(t('noDeck'))}</p>` : ''; box.dataset.key = ''; return; }
   const secs = d.sections.length ? d.sections : [{ name: '', first: 1, count: d.slides.length }];
   const key = JSON.stringify([d.path, d.v, d.ready, secs, cur, live, [...openSecs], lang]);
@@ -905,8 +869,8 @@ function renderPptSections() {
 // Where a presentation was left on the computer (to continue from there).
 const resumeOf = p => [...(pst.program || []), ...(pst.recents || [])].find(x => x.path === p)?.slide || 1;
 
-// ---------- the program, the recents, the lists ----------
-// A tap looks at a presentation (its sections); showing it is the button there.
+// ---------- the program, the recents, the lists (the side drawer) ----------
+// A tap looks at a presentation (its sections, under the show); showing it is the button there.
 function renderPptDecks() {
   const box = $('pDecks');
   const groups = [];
@@ -924,7 +888,7 @@ function renderPptDecks() {
       ${open ? (g.items.length ? `<ul>${g.items.map((it, i) => `<li class="${it.path === livePath ? 'playing' : ''}" data-g="${g.id}" data-i="${i}">${g.order ? `<span class="ord">${i + 1}</span>` : '<svg><use href="#i-slides"/></svg>'}<span class="t" dir="auto">${esc(it.name)}</span>${it.path === livePath ? `<span class="tag">${esc(t('onScreen'))}</span>` : it.path === pst.upNext ? `<span class="nextup">${esc(t('upNext'))}</span>` : ''}<svg class="caret"><use href="#i-caret"/></svg></li>`).join('')}</ul>`
         : `<p class="phint" style="padding:0 14px 12px">${esc(g.empty || '')}</p>`) : ''}</div>`;
   }).join('');
-  for (const h of box.querySelectorAll('.pgroup-head')) h.onclick = () => { openGroups.has(h.dataset.g) ? openGroups.delete(h.dataset.g) : openGroups.add(h.dataset.g); renderPpt(); };
+  for (const h of box.querySelectorAll('.pgroup-head')) h.onclick = () => { openGroups.has(h.dataset.g) ? openGroups.delete(h.dataset.g) : openGroups.add(h.dataset.g); renderPptDecks(); };
   for (const li of box.querySelectorAll('li')) li.onclick = () => previewDeck(groups.find(g => g.id === li.dataset.g).items[Number(li.dataset.i)]);
 }
 $('pPreviewClose').onclick = () => { pview = null; renderPpt(); };
@@ -941,17 +905,13 @@ function tickPptTimer() {
 }
 setInterval(tickPptTimer, 500);
 
-// Tap on the slide: the same spot on the projector (links, buttons, videos, triggers).
-// Swipe left or right on the slide: next or back. A tap stays a click on the projector.
+// Swipe left or right on the slide: next or back. A tap clicks it on the projector.
 let touch = null, swiped = 0;
-// Full screen with the phone upright, the slide is turned sideways (body.rot): finger positions
-// are turned back into the slide's own directions.
-const turned = () => document.body.classList.contains('rot');
-// The slide may be turned twice: full screen on an upright phone (+90°), and the whole app turned
-// back when the phone is held sideways (−angle). Finger positions are turned back into the slide.
+// The whole app may be turned back when the phone is held sideways (−angle): finger positions are
+// turned back into the slide's own directions.
 function onSlide(x, y) {
   const el = $('pSlide'), b = el.getBoundingClientRect();
-  const deg = (turned() ? 90 : 0) - uprightAngle, t = deg * Math.PI / 180;
+  const deg = -uprightAngle, t = deg * Math.PI / 180;
   if (deg % 360 === 0) return { x: x - b.left, y: y - b.top, w: b.width, h: b.height };
   const w = el.offsetWidth, h = el.offsetHeight, dx = x - (b.left + b.width / 2), dy = y - (b.top + b.height / 2);
   return { x: dx * Math.cos(t) + dy * Math.sin(t) + w / 2, y: -dx * Math.sin(t) + dy * Math.cos(t) + h / 2, w, h };
@@ -963,17 +923,13 @@ $('pSlide').addEventListener('touchend', e => {
   const dx = end.x - touch.x, dy = end.y - touch.y;
   touch = null;
   // Toward the end of the reading direction is "next" (left in English, right in Arabic).
-  const forward = document.documentElement.dir === 'rtl' && !turned() ? dx > 0 : dx < 0;
+  const forward = document.documentElement.dir === 'rtl' ? dx > 0 : dx < 0;
   if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.4) { swiped = Date.now(); psend({ action: forward ? 'next' : 'prev' }); }
 });
-// Full screen: only the slide. The phone's Back button (or ✕) brings the remote back.
-let fullBy = null, fullHistory = false;
-const isFull = () => document.body.classList.contains('pfull');
-const portrait = () => matchMedia('(orientation: portrait)').matches;
 // ---------- the app stays upright on the phone ----------
 // Browsers don't let a page lock the screen's orientation. So when a phone is held sideways (and
 // the browser turns the page), the whole app (#app) is turned back the other way: it stays upright
-// on the phone, clear of the phone's bars, and full screen always looks the same.
+// on the phone, clear of the phone's bars.
 let uprightAngle = 0;
 function screenAngle() {
   if (typeof store.get('test-angle', null) === 'number') return store.get('test-angle', 0); // tests
@@ -1005,39 +961,12 @@ function applyUpright() {
   return { w, h };
 }
 function applyTurn() {
-  // Full screen on an upright phone: the slide turned sideways so it's wide and readable. Sized to
-  // the part of the screen really visible now (CSS's 100vh/100vw count the status and browser bars
-  // on some phones, which cut the turned slide's bottom off).
-  const up = applyUpright();
-  const vv = window.visualViewport, root = document.documentElement.style;
-  root.setProperty('--vw', (up ? up.w : Math.floor(vv?.width || innerWidth)) + 'px');
-  root.setProperty('--vh', (up ? up.h : Math.floor(vv?.height || innerHeight)) + 'px');
-  document.body.classList.toggle('rot', isFull() && (up ? true : portrait()));
+  applyUpright();
   setTimeout(measureHeader, 0);
 }
-function setFull(on, by = 'button') {
-  if (!!on === isFull()) return;
-  document.body.classList.toggle('pfull', !!on);
-  // The phone's top bar turns black to blend with the slide's background (hiding it needs the
-  // browser's own full screen, which shows its "drag to exit" message every time).
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', on ? '#000000' : '#0b1120');
-  if (on) {
-    fullBy = by;
-    // An entry in the history, so Back closes full screen instead of leaving the app.
-    // (The page fills the screen by itself: asking the browser for full screen would bring its
-    // "drag to exit full screen" message every time.)
-    if (!fullHistory) { history.pushState({ pfull: 1 }, ''); fullHistory = true; }
-  } else {
-    fullBy = null;
-    closeTree();
-    if (fullHistory) { fullHistory = false; if (history.state?.pfull) history.back(); }
-  }
-  applyTurn();
-}
-addEventListener('popstate', () => { if (fullHistory) { fullHistory = false; setFull(false); } });
 addEventListener('resize', applyTurn);
 // The app stays upright: the installed app is locked by its manifest; this asks the phone too
-// (some allow it without reinstalling). Full screen shows the slide sideways by itself.
+// (some allow it without reinstalling).
 const lockUpright = () => { try { screen.orientation?.lock?.('portrait').catch(() => {}); } catch {} };
 lockUpright();
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') lockUpright(); });
@@ -1045,13 +974,9 @@ window.visualViewport?.addEventListener('resize', applyTurn);
 screen.orientation?.addEventListener?.('change', () => setTimeout(applyTurn, 50));
 addEventListener('orientationchange', () => setTimeout(applyTurn, 50));
 applyTurn();
-$('pFullBtn').onclick = e => { e.stopPropagation(); setFull(true); };
-$('pFullClose').onclick = e => { e.stopPropagation(); setFull(false); };
-// Turning the phone never opens or closes full screen (only the button does), and in full screen
-// the slide and its buttons stay together the same way round.
 $('pSlide').addEventListener('click', e => {
   if (!showOf() || !clickMode || Date.now() - swiped < 600 || e.target.closest('button')) return;
-  // Where on the slide itself: full screen, the slide sits letterboxed in the phone's screen.
+  // Where on the slide itself: it sits letterboxed in its box.
   const p = onSlide(e.clientX, e.clientY), ratio = pst.deck?.ratio || p.w / p.h;
   let w = p.w, h = w / ratio;
   if (h > p.h) { h = p.h; w = h * ratio; }
@@ -1068,18 +993,16 @@ $('pSlide').addEventListener('click', e => {
 document.addEventListener('click', e => {
   const b = e.target.closest('#p-remoteUi [data-p]');
   if (b) psend({ action: b.dataset.p });
-  // Black and white: exactly that screen (or back to the slide when it's on already).
+  // Black and white: that screen, or back to the slide when it's on already.
   const sc = e.target.closest('#p-remoteUi [data-screen]');
-  const want = sc && Number(sc.dataset.screen);
-  if (sc && want === 3 && caps('blackHold')) psend({ action: 'screen', s: pst.black || showOf()?.state === 3 ? 1 : 3 });
-  else if (sc && showOf()) {
-    const now = showOf().state;
+  if (sc && showOf()) {
+    const want = Number(sc.dataset.screen), now = showOf().state;
     psend(caps('screen') ? { action: 'screen', s: now === want ? 1 : want } : { action: want === 3 ? 'black' : 'white' });
   }
 });
 $('pStartBtn').onclick = () => pst.deck && startDeck(pst.deck.path, pst.deck.name, 1);
 $('pChain').onclick = () => psend({ action: 'back' });
-$('pClickMode').onclick = () => { clickMode = !clickMode; $('pClickMode').setAttribute('aria-pressed', String(clickMode)); renderPpt(); };
+$('pClickMode').onclick = () => { clickMode = !clickMode; flashLost(clickMode ? t('clickOnHint') : t('clickOffHint')); renderPpt(); };
 // End show: press and hold for a second (a tap only says so).
 {
   const b = $('pEndBtn');
@@ -1093,62 +1016,12 @@ $('pClickMode').onclick = () => { clickMode = !clickMode; $('pClickMode').setAtt
   for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => { if (timer) { stop(); flashLost(t('holdHint')); } });
   b.addEventListener('contextmenu', e => e.preventDefault());
 }
-// Notes: bigger or smaller, kept on this phone.
+// Notes: open or closed, bigger or smaller, kept on this phone.
 const setNotes = px => { px = Math.max(13, Math.min(34, px)); store.set('pnotes', px); document.documentElement.style.setProperty('--pnotes', px + 'px'); };
 setNotes(store.get('pnotes', 17));
 $('pNotesUp').onclick = () => setNotes(store.get('pnotes', 17) + 2);
 $('pNotesDown').onclick = () => setNotes(store.get('pnotes', 17) - 2);
-
-// ---------- full screen's sections: a grid of every slide, tap one to go there ----------
-// Upright (not full screen), the sections are their own part.
-function openTree() {
-  const d = pst.deck;
-  if (!d) return;
-  if (isFull()) openGrid(d); else setPart('secs');
-}
-function closeTree() { $('pTree').hidden = true; }
-function openGrid(d) {
-  const s = showOf(), live = s && s.path === d.path, cur = live ? s.slide : 0;
-  const secs = d.sections.length ? d.sections : [{ name: '', first: 1, count: d.slides.length }];
-  const here = secs.findIndex(x => cur >= x.first && cur < x.first + x.count);
-  const named = secs.length > 1 || secs[0].name;
-  // The same open sections as the list ("path|index").
-  const gridOpen = { has: i => openSecs.has(d.path + '|' + i), add: i => openSecs.add(d.path + '|' + i), delete: i => openSecs.delete(d.path + '|' + i) };
-  if (!named) gridOpen.add(0); // no sections: just the slides
-  $('pTree').classList.add('grid');
-  $('pTreeDeck').textContent = d.name;
-  const keepScroll = $('pTreeList').querySelector('.pg-main')?.scrollTop || 0;
-  $('pTreeList').innerHTML = (named ? `<nav class="pg-secs">${secs.map((sec, i) => `<button data-sec="${i}" class="${i === here ? 'here' : ''} ${gridOpen.has(i) ? 'open' : ''}"><b dir="auto">${esc(sec.name || t('untitled'))}</b><small>${esc(sec.count === 1 ? t('oneSlide') : t('slides', { n: sec.count }))}</small></button>`).join('')}</nav>` : '')
-    + `<div class="pg-main" style="--r:${d.ratio}">${secs.map((sec, i) => {
-      const open = gridOpen.has(i);
-      let tiles = '';
-      if (open) for (let n = sec.first; n < sec.first + sec.count; n++) {
-        const sl = d.slides[n - 1] || {}, pic = pthumb(n, 'small', d);
-        tiles += `<button class="pg-tile ${n === cur ? 'cur' : ''} ${sl.h ? 'hid' : ''}" data-n="${n}"><span class="pg-pic" ${pic ? `style="background-image:url('${pic}')"` : ''}></span><span class="pg-num">${n}</span></button>`;
-      }
-      const head = named ? `<button class="pg-head ${i === here ? 'here' : ''}" data-toggle="${i}"><svg class="caret"><use href="#i-caret"/></svg><b dir="auto">${esc(sec.name || t('untitled'))}</b><small>${sec.count}</small></button>` : '';
-      return `<section class="pg-sec ${open ? 'open' : ''}" id="pg-sec-${i}">${head}${open ? `<div class="pg-tiles">${tiles}</div>` : ''}</section>`;
-    }).join('')}</div>`;
-  const main = $('pTreeList').querySelector('.pg-main');
-  main.scrollTop = keepScroll;
-  const toggle = i => { gridOpen.has(i) ? gridOpen.delete(i) : gridOpen.add(i); openGrid(d); };
-  for (const b of $('pTreeList').querySelectorAll('[data-toggle]')) b.onclick = () => toggle(Number(b.dataset.toggle));
-  // A section on the side: open it and go to it.
-  for (const b of $('pTreeList').querySelectorAll('[data-sec]')) b.onclick = () => {
-    const i = Number(b.dataset.sec);
-    gridOpen.add(i); openGrid(d);
-    const m = $('pTreeList').querySelector('.pg-main');
-    m.scrollTo({ top: $('pg-sec-' + i).offsetTop - m.offsetTop, behavior: 'smooth' });
-  };
-  for (const b of $('pTreeList').querySelectorAll('[data-n]')) b.onclick = () => {
-    psend(live ? { action: 'go', n: Number(b.dataset.n) } : { action: 'go', n: Number(b.dataset.n), path: d.path });
-    closeTree();
-  };
-  $('pTree').hidden = false;
-}
-document.addEventListener('click', e => { if (e.target.closest('[data-tree]')) { e.stopPropagation(); openTree(true); } });
-$('pTreeClose').onclick = closeTree;
-$('pTree').addEventListener('click', e => { if (e.target === $('pTree')) closeTree(); });
+$('pNotesToggle').onclick = () => { store.set('pnotesOpen', !store.get('pnotesOpen', true)); renderPpt(); };
 
 // ---------- more of the app on the phone ----------
 let query = '';
@@ -1289,7 +1162,7 @@ setTimeout(measureHeader, 0);
 function selectTab(tab) {
   currentTab = tab === 'ppt' ? 'ppt' : 'play';
   try { localStorage.setItem('tab', currentTab); } catch {}
-  for (const x of document.querySelectorAll('.tabs button')) x.classList.toggle('on', x.dataset.tab === currentTab);
+  for (const x of document.querySelectorAll('#appSwitch button')) x.classList.toggle('on', x.dataset.tab === currentTab);
   renderShell();
   // Look for nearby computers only on the visible tab's pairing screen.
   for (const k of Object.keys(conns)) conns[k].stopNearby();
@@ -1299,10 +1172,9 @@ function selectTab(tab) {
   if (currentTab === 'play' && st.lang && st.lang !== lang) setLang(st.lang);
   renderStatus();
   renderInstall();
-  renderParts();
   keepAwake();
 }
-for (const b of document.querySelectorAll('.tabs button[data-tab]')) b.onclick = () => selectTab(b.dataset.tab);
+for (const b of document.querySelectorAll('#appSwitch button')) b.onclick = () => selectTab(b.dataset.tab);
 
 // ---------- install card ----------
 // Shown until the app is installed (or closed): Android gets a real Install button, iPhone the
@@ -1341,7 +1213,7 @@ setLang(lang);
   let tab = null;
   try { tab = localStorage.getItem('tab'); } catch {}
   currentTab = tab === 'ppt' ? 'ppt' : 'play';
-  for (const x of document.querySelectorAll('.tabs button')) x.classList.toggle('on', x.dataset.tab === currentTab);
+  for (const x of document.querySelectorAll('#appSwitch button')) x.classList.toggle('on', x.dataset.tab === currentTab);
   $('tab-play').hidden = currentTab !== 'play';
   $('tab-slides').hidden = currentTab !== 'ppt';
   if (target && target !== 'old' && !LAN) dial(target); else startLink();

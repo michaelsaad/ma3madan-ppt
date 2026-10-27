@@ -61,6 +61,7 @@ module.exports = async function selftest(win, { app, ppt }) {
     await js('openPvGrid()');
     await wait(300);
     await shot('5-all-slides');
+    assert.strictEqual(await js('document.querySelectorAll("#pvGridBody .sec.collapsed").length'), 0); // every section open
     await js('document.querySelector("#pvGridBody .card[data-n=\'2\']").click()');
     await until('show.slide === 2');
     assert.ok(await js('document.getElementById("pvGrid").hidden'));
@@ -118,13 +119,10 @@ module.exports = async function selftest(win, { app, ppt }) {
     await until('show.state === 3');
     await wait(300);
     await shot('6-black');
-    // Black is held: moving on keeps it black, until it's turned off.
+    // PowerPoint's own black: moving to another slide clears it.
     await js('api.showCmd({ action: "go", n: 2 })');
-    await until('show.slide === 2');
-    await until('show.state === 3 && show.black', 4000);
-    log('black held while moving');
-    await js('cmd("black")');
-    await until('show.state === 1 && !show.black');
+    await until('show.slide === 2 && show.state === 1', 4000);
+    log('black cleared by moving');
 
     await js('cmd("end")');
     await until('!show.running');

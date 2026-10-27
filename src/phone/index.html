@@ -261,6 +261,39 @@
   #pStartBtn.pbig { background: var(--accent); border-color: var(--accent); }
   .pbig.wide svg { width: 28px; height: 28px; }
   .grid button.on.white { background: #f3f4f6; border-color: #f3f4f6; color: #111; }
+  /* Play / PPT, in the top bar; the bar keeps one height whatever it shows */
+  header { height: 52px; box-sizing: content-box; flex: none; }
+  header.linked .who b { display: none; }
+  header .who small { display: block; }
+  .appswitch { display: inline-grid; grid-template-columns: 1fr 1fr; padding: 3px; gap: 3px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); flex: none; }
+  .appswitch[hidden] { display: none; }
+  .appswitch button { min-height: 36px; min-width: 64px; padding: 0 12px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); font-size: 14px; font-weight: 600; }
+  .appswitch button.on { background: var(--accent); color: #fff; }
+  /* the show pinned under the top bar */
+  .pslide-main { max-height: 34vh; }
+  .pstage-bar .ptimer { font-size: 12px; color: #c9d2e3; flex: none; }
+  .pclick { min-height: 30px; min-width: 30px; width: 30px; height: 26px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: #5f6b82; flex: none; }
+  .pclick svg { width: 17px; height: 17px; }
+  .pclick[aria-pressed="true"] { color: var(--gold); }
+  .pdock { display: flex; flex-direction: column; gap: 8px; padding: 8px 10px 10px; background: var(--bg); border-bottom: 1px solid var(--line); }
+  .pdock .pbig { min-height: 64px; }
+  .pdock .pbig svg { width: 34px; height: 34px; }
+  .pdock .pctl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .pdock .pctl button { min-height: 50px; border-radius: 14px; flex-direction: row; gap: 6px; font-size: 13px; }
+  .pdock .pctl button svg { width: 20px; height: 20px; }
+  .pnotes-toggle { min-height: 34px; padding: 0 4px; gap: 6px; border: 0; background: transparent; font: inherit; font-weight: 600; color: var(--text); }
+  .pnotes-card.closed .pnotes { display: none; }
+  .pnotes-card:not(.closed) .pnotes-toggle .caret { transform: none; }
+  .psec-title { display: flex; align-items: center; gap: 10px; margin: 2px 4px 0; }
+  /* the program drawer */
+  .pdrawer { position: fixed; inset: 0; z-index: 95; background: rgba(3, 6, 12, .6); display: flex; }
+  .pdrawer[hidden] { display: none; }
+  .pdrawer-panel { width: min(88vw, 380px); height: 100%; display: flex; flex-direction: column; background: var(--bg); border-inline-end: 1px solid var(--line); animation: drawer .18s ease-out; padding-top: env(safe-area-inset-top); }
+  @keyframes drawer { from { transform: translateX(-100%); } to { transform: none; } }
+  [dir=rtl] .pdrawer-panel { animation-name: drawer-rtl; }
+  @keyframes drawer-rtl { from { transform: translateX(100%); } to { transform: none; } }
+  .pdrawer-head { display: flex; align-items: center; gap: 10px; padding: 14px 14px 10px; font-size: 17px; }
+  .pdrawer .pdecks { flex: 1; overflow-y: auto; padding: 0 12px 20px; }
   .pnotes { white-space: pre-wrap; font-size: var(--pnotes, 17px); line-height: 1.6; max-height: 40vh; overflow-y: auto; user-select: text; }
   /* PPT in three parts: the show, the sections, the program (the bottom bar switches them) */
   .tabs.ppt-mode { grid-template-columns: .75fr 1fr 1fr 1fr; }
@@ -449,6 +482,7 @@
 <header>
   <img class="logo" src="/icons/icon-96.png" alt="">
   <span class="who"><b id="appName">Ma3madan Remote</b><small id="whoSub"></small></span>
+  <div id="appSwitch" class="appswitch" hidden><button data-tab="play">Play</button><button data-tab="ppt">PPT</button></div>
   <span id="dot" class="dot"></span><span id="status" class="status" hidden></span>
 </header>
 
@@ -624,73 +658,43 @@
   <div id="p-remoteUi" class="screen" hidden>
     <!-- The connection dropped: the remote stays, but nothing it shows is sure until it's back -->
     <div id="pLost" class="plost" hidden><i class="mini-spin"></i><span data-s="reconnecting"></span></div>
-    <!-- On the Sections and Program parts: what's on the screen, with back/next, always in reach -->
-    <div id="pMini" class="pmini" hidden>
-      <button id="pMiniWhere" class="pmini-where"><span id="pMiniStatus" class="status"></span><b id="pMiniDeck" dir="auto"></b><span id="pMiniPos"></span></button>
-      <button data-p="prev" class="pmini-btn" aria-label="Previous"><svg><use href="#i-left"/></svg></button>
-      <button data-p="next" class="pmini-btn" aria-label="Next"><svg><use href="#i-right"/></svg></button>
-    </div>
+    <!-- The show, always in sight at the top: the slide, where it is, back/next, black/white/end -->
     <div id="pStage" class="pstage">
-      <div id="pSlide" class="pslide-main"><img id="pSlideImg" alt=""><div id="pBlackBand" class="pblack-band" data-s="blackBand" hidden></div><p id="pEmpty" class="pempty" data-s="noDeck"></p>
-</div>
-      <!-- Full screen: every control in one column on the right edge, under the right thumb -->
-      <div id="pFullBar" class="pfull-bar">
-        <button id="pFullClose" class="fb-round" aria-label="Close"><svg><use href="#i-x"/></svg></button>
-        <button class="fb-round" data-tree aria-label="Sections"><svg><use href="#i-tree"/></svg></button>
-        <button class="fb-round" data-screen="3" id="pFullBlack" aria-label="Black"><svg><use href="#i-black"/></svg></button>
-        <span class="fb-grow"></span>
-        <button data-p="prev" class="fb-prev" aria-label="Previous"><svg><use href="#i-left"/></svg></button>
-        <span id="pFullPos" class="pfull-pos"></span>
-        <button data-p="next" class="fb-next" aria-label="Next"><svg><use href="#i-right"/></svg></button>
-      </div>
-      <div class="pstage-bar"><span id="pStatus" class="status"></span><b id="pStagePos"></b><span id="pStageSec" dir="auto"></span><span id="pDeck" class="pdeck" dir="auto"></span></div>
-      <div class="pstage-tools">
-        <button id="pClickMode" class="ptool" aria-pressed="false"><svg><use href="#i-hand"/></svg><span data-s="clickMode"></span></button>
-        <span class="grow"></span>
-        <button id="pFullBtn" class="ptool" aria-label="Full screen"><svg><use href="#i-expand"/></svg><span data-s="fullscreen"></span></button>
+      <div id="pSlide" class="pslide-main"><img id="pSlideImg" alt=""><div id="pBlackBand" class="pblack-band" data-s="blackBand" hidden></div><p id="pEmpty" class="pempty" data-s="noDeck"></p></div>
+      <div class="pstage-bar"><span id="pStatus" class="status"></span><b id="pStagePos"></b><span id="pStageSec" dir="auto"></span><span id="pDeck" class="pdeck" dir="auto"></span><span id="pTimer" class="ptimer"></span>
+        <button id="pClickMode" class="pclick" aria-pressed="true"><svg><use href="#i-hand"/></svg></button></div>
+      <div class="pdock">
+        <div id="pPlayRow" class="prow">
+          <button data-p="prev" class="pbig" aria-label="Previous"><svg><use href="#i-left"/></svg></button>
+          <button data-p="next" class="pbig" aria-label="Next"><svg><use href="#i-right"/></svg></button>
+        </div>
+        <div id="pStartRow" class="prow" hidden>
+          <button id="pStartBtn" class="pbig primary wide"><svg><use href="#i-play"/></svg><span data-s="fromStart"></span></button>
+        </div>
+        <div id="pControls" class="pctl">
+          <button data-screen="3" id="pBlackBtn"><svg><use href="#i-black"/></svg><span data-s="black"></span></button>
+          <button data-screen="4" id="pWhiteBtn" class="white"><svg><use href="#i-white"/></svg><span data-s="white"></span></button>
+          <button id="pEndBtn" class="pend"><i class="hold"></i><svg><use href="#i-stop"/></svg><span data-s="holdEnd"></span></button>
+        </div>
       </div>
     </div>
 
-    <div class="ppart" data-part="show">
-    <section class="card">
-      <div class="ppos"><b id="pPos"></b><span id="pSec" dir="auto"></span><span id="pStep"></span><span class="grow"></span><span id="pTimer" class="ptimer"></span></div>
-      <button id="pChain" class="pchain" hidden><svg><use href="#i-return"/></svg><span dir="auto"></span></button>
-      <p id="pHint" class="phint" data-s="clickHint"></p>
-      <div id="pPlayRow" class="prow">
-        <button data-p="prev" class="pbig" aria-label="Previous"><svg><use href="#i-left"/></svg></button>
-        <button data-p="next" class="pbig" aria-label="Next"><svg><use href="#i-right"/></svg></button>
-      </div>
-      <div id="pStartRow" class="prow" hidden>
-        <button id="pStartBtn" class="pbig primary wide"><svg><use href="#i-play"/></svg><span data-s="fromStart"></span></button>
-      </div>
-    </section>
-
-    <div id="pControls" class="grid pctl">
-      <button data-screen="3" id="pBlackBtn"><svg><use href="#i-black"/></svg><span data-s="black"></span></button>
-      <button data-screen="4" id="pWhiteBtn" class="white"><svg><use href="#i-white"/></svg><span data-s="white"></span></button>
-      <button id="pEndBtn" class="pend"><i class="hold"></i><svg><use href="#i-stop"/></svg><span data-s="holdEnd"></span></button>
-    </div>
+    <button id="pChain" class="pchain" hidden><svg><use href="#i-return"/></svg><span dir="auto"></span></button>
 
     <section id="pNotesBox" class="card pnotes-card">
-      <h3 class="pnotes-head"><span data-s="notes"></span><span class="grow"></span>
+      <h3 class="pnotes-head"><button id="pNotesToggle" class="pnotes-toggle"><svg class="caret"><use href="#i-caret"/></svg><span data-s="notes"></span></button><span class="grow"></span>
         <button id="pNotesDown" class="ptool" aria-label="Smaller">A−</button><button id="pNotesUp" class="ptool" aria-label="Bigger">A+</button></h3>
       <div id="pNotes" class="pnotes" dir="auto"></div>
     </section>
-    </div>
 
-    <div class="ppart" data-part="secs" hidden>
-      <div id="pPreview" class="card ppreview" hidden>
-        <div class="ppreview-top"><span class="tag" data-s="previewTag"></span><b id="pPreviewName" dir="auto"></b><button id="pPreviewClose" class="ptool" aria-label="Close"><svg><use href="#i-x"/></svg></button></div>
-        <p class="phint" data-s="previewHint"></p>
-        <div class="prow"><button id="pPreviewResume" class="pmid"><svg><use href="#i-play"/></svg><span></span></button><button id="pPreviewStart" class="pmid primary"><svg><use href="#i-play"/></svg><span data-s="fromStart"></span></button></div>
-      </div>
-      <h3 id="pSectionsHead" class="psec-title"><span data-s="sections"></span><small id="pSectionsDeck" dir="auto"></small></h3>
-      <div id="pSections" class="psections"></div>
+    <div id="pPreview" class="card ppreview" hidden>
+      <div class="ppreview-top"><span class="tag" data-s="previewTag"></span><b id="pPreviewName" dir="auto"></b><button id="pPreviewClose" class="ptool" aria-label="Close"><svg><use href="#i-x"/></svg></button></div>
+      <p class="phint" data-s="previewHint"></p>
+      <div class="prow"><button id="pPreviewResume" class="pmid"><svg><use href="#i-play"/></svg><span></span></button><button id="pPreviewStart" class="pmid primary"><svg><use href="#i-play"/></svg><span data-s="fromStart"></span></button></div>
     </div>
-
-    <div class="ppart" data-part="prog" hidden>
-      <div id="pDecks" class="pdecks"></div>
-    </div>
+    <div class="psec-title"><b data-s="sections"></b><small id="pSectionsDeck" dir="auto"></small><span class="grow"></span>
+      <button id="pProgBtn" class="ptool"><svg><use href="#i-list"/></svg><span data-s="program"></span></button></div>
+    <div id="pSections" class="psections"></div>
   </div>
 
 </main>
@@ -703,19 +707,13 @@
       <div class="prow"><button id="pAskNo" class="pmid" data-s="cancel"></button><button id="pAskYes" class="pmid primary"></button></div></div>
   </div>
 </div>
-<div id="pTree" class="ptree" hidden>
-  <div class="ptree-sheet" role="dialog" aria-modal="true">
-    <div class="ptree-head"><b data-s="sections"></b><span id="pTreeDeck" dir="auto"></span><button id="pTreeClose" aria-label="Close"><svg><use href="#i-x"/></svg></button></div>
-    <div id="pTreeList" class="ptree-list"></div>
+<!-- The program, the recents and the lists, from the side -->
+<div id="pDrawer" class="pdrawer" hidden>
+  <div class="pdrawer-panel" role="dialog" aria-modal="true">
+    <div class="pdrawer-head"><b data-s="program"></b><span class="grow"></span><button id="pDrawerClose" class="ptool" aria-label="Close"><svg><use href="#i-x"/></svg></button></div>
+    <div id="pDecks" class="pdecks"></div>
   </div>
 </div>
-<nav class="tabs">
-  <button data-tab="play" class="on"><svg><use href="#i-play"/></svg><span>Ma3madan Play</span></button>
-  <button data-tab="ppt"><svg><use href="#i-slides"/></svg><span data-s="slidesTab"></span></button>
-  <button data-part="show" class="part" hidden><svg><use href="#i-slides"/></svg><span data-s="partShow"></span></button>
-  <button data-part="secs" class="part" hidden><svg><use href="#i-tree"/></svg><span data-s="sections"></span></button>
-  <button data-part="prog" class="part" hidden><svg><use href="#i-list"/></svg><span data-s="program"></span></button>
-</nav>
 </div>
 
 <script src="/link.js"></script>
