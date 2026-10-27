@@ -404,3 +404,35 @@ button.danger-fill { background: var(--live); border-color: var(--live); color: 
 button.danger-fill:hover { filter: brightness(1.1); background: var(--live); }
 /* The two panels swap sides in Arabic: so do their buttons' pictures. */
 html[dir=rtl] #sidebarBtn svg, html[dir=rtl] #sectionsBtn svg { transform: scaleX(-1); }
+
+/* A small window: a side panel that doesn't fit floats over the middle (its button opens it). */
+body.side-float #side, body.sec-float #secSide {
+  visibility: visible; position: fixed; top: 56px; bottom: 0; z-index: 45; box-shadow: 0 12px 40px var(--shadow);
+}
+body.side-float #side { inset-inline-start: 0; width: var(--side-w, 300px); }
+body.sec-float #secSide { inset-inline-end: 0; width: var(--sec-w, 280px); }
+body.side-float #sideGrip, body.sec-float #secGrip { display: none; }
+
+/* The middle fits whatever room it has: nothing spills under the panels. */
+#main { overflow: hidden; container-type: inline-size; }
+.sec-head b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sec-head .count { white-space: nowrap; }
+.deck-bar button { min-width: 0; max-width: 100%; }
+.deck-bar button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+@container (max-width: 820px) {
+  .deck-bar .deck-title { flex: 1 1 100%; }
+  .deck-bar > .grow { display: none; }
+  .deck-bar kbd { display: none; }
+  .size { display: none; }
+}
+@container (max-width: 760px) {
+  /* Presenter view: the next slide and the notes under the live slide. */
+  .pv-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(240px, 1fr) auto; overflow-y: auto; }
+  .pv-side { grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); grid-template-rows: auto minmax(160px, auto); column-gap: 12px; }
+  .pv-side > :nth-child(1) { grid-column: 1; grid-row: 1; }
+  .pv-side > :nth-child(2) { grid-column: 1; grid-row: 2; align-self: start; }
+  .pv-side > :nth-child(3) { grid-column: 2; grid-row: 1; }
+  .pv-side > :nth-child(4) { grid-column: 2; grid-row: 2; }
+  .pv-controls .big { padding: 10px 14px; }
+  .pv-controls button kbd { display: none; }
+}

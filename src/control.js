@@ -353,6 +353,7 @@ async function openDeck(p, background) {
 function activate(p) {
   active = p;
   pvGridOpen = false;
+  if (floatOpen.side) { floatOpen.side = false; setPanels(); } // picked from the floating library
   render();
 }
 
@@ -867,14 +868,39 @@ $('keysBtn').onclick = showKeys;
 
 // ---------- the two side panels: show/hide, resize ----------
 // The program and library on the start side, the sections on the end side (they swap in Arabic).
+// A small window: a panel that would squeeze the middle under MIDDLE_MIN floats over it instead,
+// closed until its button opens it (the sections first, then the library too).
+const MIDDLE_MIN = 560;
+const floatOpen = { side: false, sec: false };
+let floats = { side: false, sec: false };
 function setPanels() {
-  document.body.classList.toggle('side-hidden', !!settings.sidebarHidden);
-  document.body.classList.toggle('sec-hidden', !!settings.sectionsHidden);
-  $('sidebarBtn').classList.toggle('on', !settings.sidebarHidden);
-  $('sectionsBtn').classList.toggle('on', !settings.sectionsHidden);
+  const sideW = settings.sidebarWidth || 300, secW = settings.sectionsWidth || 280;
+  const sideOn = !settings.sidebarHidden, secOn = !settings.sectionsHidden;
+  const sideFloat = sideOn && innerWidth - sideW < MIDDLE_MIN;
+  floats = { side: sideFloat, sec: secOn && innerWidth - (sideOn && !sideFloat ? sideW : 0) - secW < MIDDLE_MIN };
+  if (!floats.side) floatOpen.side = false;
+  if (!floats.sec) floatOpen.sec = false;
+  const b = document.body.classList;
+  b.toggle('side-hidden', !sideOn || floats.side);
+  b.toggle('sec-hidden', !secOn || floats.sec);
+  b.toggle('side-float', floats.side && floatOpen.side);
+  b.toggle('sec-float', floats.sec && floatOpen.sec);
+  $('sidebarBtn').classList.toggle('on', sideOn && (!floats.side || floatOpen.side));
+  $('sectionsBtn').classList.toggle('on', secOn && (!floats.sec || floatOpen.sec));
 }
-function toggleSidebar() { settings.sidebarHidden = !settings.sidebarHidden; api.setSetting('sidebarHidden', settings.sidebarHidden); setPanels(); }
-function toggleSections() { settings.sectionsHidden = !settings.sectionsHidden; api.setSetting('sectionsHidden', settings.sectionsHidden); setPanels(); }
+function toggleSidebar() {
+  if (floats.side) { floatOpen.side = !floatOpen.side; floatOpen.sec = false; setPanels(); return; }
+  settings.sidebarHidden = !settings.sidebarHidden; api.setSetting('sidebarHidden', settings.sidebarHidden); setPanels();
+  if (!settings.sidebarHidden && floats.side) { floatOpen.side = true; setPanels(); } // shown again, but it has to float
+}
+function toggleSections() {
+  if (floats.sec) { floatOpen.sec = !floatOpen.sec; floatOpen.side = false; setPanels(); return; }
+  settings.sectionsHidden = !settings.sectionsHidden; api.setSetting('sectionsHidden', settings.sectionsHidden); setPanels();
+  if (!settings.sectionsHidden && floats.sec) { floatOpen.sec = true; setPanels(); }
+}
+addEventListener('resize', setPanels);
+// A click in the middle closes a floating panel (like a menu).
+$('main').addEventListener('mousedown', () => { if (floatOpen.side || floatOpen.sec) { floatOpen.side = floatOpen.sec = false; setPanels(); } });
 $('sidebarBtn').onclick = toggleSidebar;
 $('sectionsBtn').onclick = toggleSections;
 function resizer(gripId, panelId, setting, cssVar, def, endSide) {
@@ -887,7 +913,7 @@ function resizer(gripId, panelId, setting, cssVar, def, endSide) {
     // Dragging away from the panel's own side makes it wider.
     const sign = (document.documentElement.dir === 'rtl') !== endSide ? -1 : 1;
     const move = ev => setW(startW + sign * (ev.clientX - startX));
-    const up = () => { grip.removeEventListener('pointermove', move); grip.removeEventListener('pointerup', up); api.setSetting(setting, settings[setting]); };
+    const up = () => { grip.removeEventListener('pointermove', move); grip.removeEventListener('pointerup', up); api.setSetting(setting, settings[setting]); setPanels(); };
     grip.addEventListener('pointermove', move);
     grip.addEventListener('pointerup', up);
   });

@@ -24,6 +24,8 @@ module.exports = async function selftest(win, { app, ppt }) {
   try {
     await until('document.readyState === "complete" && typeof openDeck === "function"');
     if (process.env.MP_LANG) await js(`applyLang(${JSON.stringify(process.env.MP_LANG)}); render()`);
+    // MP_NARROW=1: a small window (the side panels float over the middle).
+    if (process.env.MP_NARROW) { win.unmaximize(); win.setSize(960, 1000); await wait(400); }
     await js(`openFiles([${JSON.stringify(deck)}])`);
     await until('activeDeck() && activeDeck().ready === activeDeck().slides.length');
     assert.strictEqual(await js('library.program.length'), 1); // opened on purpose: it joins the program
@@ -33,6 +35,16 @@ module.exports = async function selftest(win, { app, ppt }) {
     assert.strictEqual(await js('document.querySelectorAll("#grid .card").length'), 7);
     await shot('1-deck');
     log('deck view ok');
+    if (process.env.MP_NARROW) {
+      // Too small for both panels: the sections float over the middle, opened by their button.
+      assert.ok(await js('document.body.classList.contains("sec-hidden") && !document.body.classList.contains("sec-float")'));
+      await js('document.getElementById("sectionsBtn").click()');
+      assert.ok(await js('document.body.classList.contains("sec-float") && getComputedStyle(document.getElementById("secSide")).position === "fixed"'));
+      await shot('1b-sections-floating');
+      await js('document.getElementById("main").dispatchEvent(new MouseEvent("mousedown", { bubbles: true }))');
+      assert.ok(await js('!document.body.classList.contains("sec-float")'));
+      log('floating sections ok');
+    }
 
     // Sections start closed: open one, and it's open in the sections panel too; then close it.
     assert.strictEqual(await js('document.querySelectorAll("#secList .srow").length'), 3);
