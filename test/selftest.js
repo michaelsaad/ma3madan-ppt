@@ -81,6 +81,13 @@ module.exports = async function selftest(win, { app, ppt }) {
       await js('cmd("prev")');
       await until('__shots.length > 0', 4000);
       log('projector pictures for the phone:', await js('__shots.join(", ")'));
+      // A phone through the relay (no direct path): smaller pictures.
+      await js(`__shots = []; LinkPage.send = m => { if (m.type === 'thumb') __shots.push(m.data.length); };
+        link = { ...link, phones: [{ peer: 'test', route: 'relay' }] }; scheduleLiveShots();`);
+      await js('cmd("next")');
+      await until('__shots.length > 0', 5000);
+      assert.ok(await js('__shots.every(n => n < 50000)'), 'relay pictures: ' + await js('__shots.join(", ")'));
+      log('relay pictures (bytes):', await js('__shots.join(", ")'));
       await js('LinkPage.send = __send; remoteOn = false; link = { ...link, phones: [] }; scheduleLiveShots();');
     }
 

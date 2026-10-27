@@ -9,7 +9,7 @@ let link = { on: false };
 let lanOpen = false;
 let lanNet = 0; // which network's code the Wi-Fi page shows
 // The projector's picture for the phones (see scheduleLiveShots).
-let shotLoop = null, shotKey = '', shotSig = '', shotDirty = false, shotSentAt = 0;
+let shotLoop = null, shotKey = '', shotSig = '', shotDirty = false, shotSentAt = 0, shotChangedAt = 0;
 
 function renderRemoteBtn() {
   $('remoteBtn').classList.toggle('on', remoteOn);
@@ -183,21 +183,26 @@ function pushRemote() {
 // plays on by itself or after the previous one, a shape flying in for two seconds), the phone
 // gets the new picture — at most one every 0.6 s, and the last one once it has settled. Not while
 // it's black or white: the phone shows the slide then, with a band.
+// A phone with no direct path (on mobile data, say) gets everything through the room on the
+// internet, slower: then the pictures are smaller and fewer (once the projector settles, or every
+// 2 s while it keeps moving), so a tap never waits behind them.
 function scheduleLiveShots() {
   const phones = (link.phones?.length || 0) + (link.wifiPages || 0);
   if (!show.running || !phones) { clearInterval(shotLoop); shotLoop = null; shotKey = ''; return; }
   // A new step: the next picture goes out at once.
   const key = [show.path, show.slide, show.click || 0].join('|');
-  if (key !== shotKey) { shotKey = key; shotSig = ''; shotSentAt = 0; }
+  if (key !== shotKey) { shotKey = key; shotSig = ''; shotSentAt = Date.now() - 1000; }
   if (!shotLoop) shotLoop = setInterval(watchProjector, 250);
 }
 function watchProjector() {
   if (!show.running || !remoteOn || show.state === 3 || show.state === 4) return;
   const sig = projectorSignature();
   if (sig == null) return;
-  if (sig !== shotSig) { shotSig = sig; shotDirty = true; }
-  if (!shotDirty || Date.now() - shotSentAt < 600) return;
-  const data = liveShot();
+  const now = Date.now(), slow = link.phones?.some(p => p.route === 'relay');
+  if (sig !== shotSig) { shotSig = sig; shotDirty = true; shotChangedAt = now; }
+  if (!shotDirty) return;
+  if (slow ? !(now - shotChangedAt >= 400 && now - shotSentAt >= 1000 || now - shotSentAt >= 3000) : now - shotSentAt < 600) return;
+  const data = slow ? liveShot(480, 35000) : liveShot();
   if (!data) return;
   shotDirty = false; shotSentAt = Date.now();
   LinkPage.send({ type: 'thumb', id: `live|${show.slide}|${show.click || 0}|${show.path}`, v: Date.now(), data });
@@ -223,16 +228,16 @@ function projectorSignature() {
   for (let i = 0; i < px.length; i += 4) s += String.fromCharCode(65 + ((px[i] + px[i + 1] + px[i + 2]) >> 5));
   return s;
 }
-function liveShot() {
+function liveShot(max = 800, limit = 120000) {
   const v = liveReady(), d = deckOf(show.path);
   if (!v || !d) return null;
   const r = slideRect(v, d);
-  const w = Math.min(800, Math.round(r.sw)), h = Math.round(w / r.sr);
+  const w = Math.min(max, Math.round(r.sw)), h = Math.round(w / r.sr);
   const c = document.createElement('canvas');
   c.width = w; c.height = h;
   c.getContext('2d').drawImage(v, r.sx, r.sy, r.sw, r.sh, 0, 0, w, h);
   // Small, so it arrives fast (a data channel message holds about 256 KB at most).
-  for (const q of [0.7, 0.55, 0.4]) { const data = c.toDataURL('image/jpeg', q); if (data.length < 120000 || q === 0.4) return data; }
+  for (const q of [0.7, 0.55, 0.4]) { const data = c.toDataURL('image/jpeg', q); if (data.length < limit || q === 0.4) return data; }
 }
 // What the phone can do with this version (a phone app newer or older than this one adapts).
 const REMOTE_CAPS = ['program', 'preview', 'back', 'screen', 'resume'];
