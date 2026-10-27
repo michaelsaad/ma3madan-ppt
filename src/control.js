@@ -1,5 +1,9 @@
-// The operator's window: library on the side, a presentation's sections and slides, and the
-// presenter view while the show runs.
+// The operator's window: the program and the library on one side, the sections on the other, and
+// in the middle a presentation's slides, or the presenter view while it's on the screen.
+//
+// What's on the screen (the show) and what's looked at here (`active`) are kept apart: looking at
+// another presentation never changes what the audience sees, the keys always drive the show, and
+// only "Show" (with a question when another one is on) puts something else on the screen.
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const same = (a, b) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
@@ -7,17 +11,16 @@ const baseName = p => p.split(/[\\/]/).pop().replace(/\.(pptx|ppt|ppsx|pps|pptm|
 const folderOf = p => p.split(/[\\/]/).slice(-2, -1)[0] || '';
 
 let settings = {};
-let library = { recents: [], lists: [] };
-const open = [];          // open presentations, in tab order: deck info from main (+ ready thumbs)
-let active = null;        // path of the presentation on screen
+let library = { recents: [], lists: [], program: [] };
+const open = [];          // presentations read so far: deck info from main (+ ready thumbs)
+let active = null;        // path of the presentation looked at here (the live one, or another)
 let selected = 1;         // selected slide in the grid
 let show = { running: false };
 let displays = { displays: [], showOn: 'auto' };
 let pvGridOpen = false;
-// Sections start closed, the one on the projector marked; open them by hand. Every time "All
-// slides" opens, or another presentation shows, they're all closed again.
+// Sections start closed, the one on the projector marked; open them by hand. Open is open
+// everywhere: the sections panel, the slide grid and "All slides" (per presentation).
 const expandedSecs = new Set();
-let gridDeck = '';
 try { localStorage.removeItem('collapsedSections'); } catch {}
 
 const deckOf = p => open.find(d => same(d.path, p));
@@ -63,8 +66,30 @@ function modal(html, onReady) {
   $('modal').hidden = false;
   onReady?.($('modalCard'));
 }
-function closeModal() { $('modal').hidden = true; $('modalCard').classList.remove('wide'); }
+let onModalClose = null;
+function closeModal() {
+  $('modal').hidden = true; $('modalCard').classList.remove('wide');
+  const f = onModalClose; onModalClose = null; f?.();
+}
 $('modal').addEventListener('mousedown', e => { if (e.target === $('modal')) closeModal(); });
+
+// A yes/no question; Esc, a click outside or Cancel are "no".
+function confirmAsk(title, text, okText, danger) {
+  return new Promise(resolve => {
+    modal(`<h3>${esc(title)}</h3><p>${esc(text)}</p>
+      <div class="actions"><button id="cNo">${esc(t('cancel'))}</button><button id="cYes" class="${danger ? 'danger-fill' : 'primary'}">${esc(okText)}</button></div>`, c => {
+      onModalClose = () => resolve(false);
+      c.querySelector('#cNo').onclick = closeModal;
+      c.querySelector('#cYes').onclick = () => { onModalClose = null; closeModal(); resolve(true); };
+      c.querySelector('#cYes').focus();
+    });
+  });
+}
+// Putting another presentation on the screen while one is showing: ask first.
+function confirmReplace(p) {
+  if (!show.running || same(show.path, p)) return Promise.resolve(true);
+  return confirmAsk(t('replaceTitle'), t('replaceQ', { a: baseName(show.path), b: baseName(p) }), t('showIt'));
+}
 
 function ask(title, value, okText) {
   return new Promise(resolve => {
@@ -93,6 +118,67 @@ function itemThumb(p) {
   return r?.thumb || '';
 }
 
+// ---------- the program: tonight's presentations, in order ----------
+const inProgram = p => library.program.some(x => same(x, p));
+function addToProgram(p, quiet) {
+  if (inProgram(p)) return;
+  library.program.push(p);
+  saveLibrary(); renderLibrary();
+  if (!quiet) toast(t('addedToProgram', { name: baseName(p) }));
+}
+// The one after the live presentation in the program: "next".
+function upNext() {
+  if (!show.running) return null;
+  const i = library.program.findIndex(x => same(x, show.path));
+  return i >= 0 ? library.program[i + 1] || null : null;
+}
+async function removeFromProgram(p) {
+  if (show.running && same(show.path, p)) {
+    if (!(await confirmAsk(t('removeLiveTitle'), t('removeLiveQ', { name: baseName(p) }), t('endAndRemove'), true))) return;
+    await api.showCmd({ action: 'end' });
+  }
+  const i = library.program.findIndex(x => same(x, p));
+  if (i >= 0) library.program.splice(i, 1);
+  saveLibrary();
+  // Closed in PowerPoint too (it's read again, quickly, if it's opened later).
+  const k = open.findIndex(d => same(d.path, p));
+  if (k >= 0 && !(show.running && same(show.path, p))) { open.splice(k, 1); api.closeDeck(p); }
+  if (same(active, p)) active = (show.running && deckOf(show.path)?.path) || library.program[Math.min(i, library.program.length - 1)] || null;
+  if (active && !deckOf(active)) { const a = active; active = null; openDeck(a); }
+  render();
+}
+function moveInProgram(p, before) {
+  const from = library.program.findIndex(x => same(x, p));
+  if (from < 0 || same(p, before)) return;
+  library.program.splice(from, 1);
+  const to = before ? library.program.findIndex(x => same(x, before)) : -1;
+  library.program.splice(to < 0 ? library.program.length : to, 0, p);
+  saveLibrary(); renderLibrary();
+}
+function programMenu(x, y) {
+  openMenu(x, y, [
+    { text: t('saveProgramAsList'), icon: 'i-list', run: async () => {
+      if (!library.program.length) return;
+      const name = await ask(t('newList'), '', t('create'));
+      if (name) { library.lists.push({ id: Date.now().toString(36), name, items: [...library.program] }); saveLibrary(); renderLibrary(); }
+    } },
+    '-',
+    { text: t('clearProgram'), icon: 'i-x', danger: true, run: async () => {
+      if (!library.program.length || !(await confirmAsk(t('clearProgram'), t('clearProgramQ'), t('clearProgram'), true))) return;
+      for (const p of [...library.program]) if (!(show.running && same(show.path, p))) await removeFromProgram(p);
+    } },
+  ]);
+}
+// A saved list becomes tonight's program (the one on the screen stays in it).
+async function useAsProgram(l) {
+  if (library.program.length && !(await confirmAsk(t('useAsProgram'), t('useAsProgramQ', { name: l.name }), t('useAsProgram')))) return;
+  const keep = show.running ? library.program.filter(p => same(p, show.path)) : [];
+  library.program = [...keep, ...l.items.filter(p => !keep.some(k => same(k, p)))];
+  saveLibrary();
+  if (!active || !inProgram(active)) { if (library.program[0]) await openDeck(library.program[0]); }
+  render();
+}
+
 function renderLibrary() {
   const q = $('search').value.trim().toLowerCase();
   const match = p => !q || baseName(p).toLowerCase().includes(q) || p.toLowerCase().includes(q);
@@ -100,17 +186,24 @@ function renderLibrary() {
   box.innerHTML = '';
   const group = (id, title, icon, paths, opts = {}) => {
     const g = document.createElement('div');
-    g.className = 'group' + (collapsedGroups.has(id) && !q ? ' collapsed' : '');
+    g.className = 'group' + (opts.program ? ' program' : '') + (collapsedGroups.has(id) && !q ? ' collapsed' : '');
     const head = document.createElement('div');
     head.className = 'group-head';
     head.innerHTML = `<svg class="caret"><use href="#i-caret"/></svg><svg><use href="#${icon}"/></svg><span>${esc(title)}</span><span class="count">${paths.length}</span>` +
-      (opts.list ? `<button class="icon ghost more"><svg><use href="#i-more"/></svg></button>` : '');
+      (opts.list || opts.program ? `<button class="icon ghost more"><svg><use href="#i-more"/></svg></button>` : '');
     head.onclick = e => {
       if (e.target.closest('.more')) return;
       collapsedGroups.has(id) ? collapsedGroups.delete(id) : collapsedGroups.add(id);
       localStorage.setItem('collapsedGroups', JSON.stringify([...collapsedGroups]));
       renderLibrary();
     };
+    if (opts.program) {
+      head.querySelector('.more').onclick = e => { e.stopPropagation(); programMenu(e.clientX, e.clientY); };
+      // Drop a presentation from the recents or a list on the program's title: it joins at the end.
+      head.addEventListener('dragover', e => { if (dragPath) { e.preventDefault(); g.classList.add('drop-target'); } });
+      head.addEventListener('dragleave', () => g.classList.remove('drop-target'));
+      head.addEventListener('drop', e => { e.preventDefault(); g.classList.remove('drop-target'); if (dragPath) { inProgram(dragPath) ? moveInProgram(dragPath, null) : addToProgram(dragPath); } });
+    }
     if (opts.list) {
       head.querySelector('.more').onclick = e => { e.stopPropagation(); listMenu(opts.list, e.clientX, e.clientY); };
       // Drop an item from another group onto a list to add it there.
@@ -125,44 +218,66 @@ function renderLibrary() {
     if (!shown.length) {
       const e = document.createElement('div');
       e.className = 'group-empty';
-      e.textContent = q ? t('noMatch') : (opts.list ? t('listEmpty') : t('noRecents'));
+      e.textContent = q ? t('noMatch') : opts.program ? t('programEmpty') : (opts.list ? t('listEmpty') : t('noRecents'));
       body.appendChild(e);
     }
-    for (const p of shown) body.appendChild(itemRow(p, opts.list));
+    shown.forEach((p, i) => body.appendChild(itemRow(p, opts.list, opts.program ? i + 1 : 0)));
     g.appendChild(body);
     box.appendChild(g);
   };
+  group('program', t('program'), 'i-play', library.program, { program: true });
   group('recents', t('recents'), 'i-recent', library.recents.map(r => r.path));
   for (const l of library.lists) group('list:' + l.id, l.name, 'i-list', l.items, { list: l });
 }
 
+// A presentation in the side panel. A click looks at it (never changes the screen), a double
+// click shows it (asking first when another one is showing). In the program: its place in the
+// order, "next" after the live one, drag to reorder, × to take it out.
 let dragPath = null;
-function itemRow(p, list) {
+function itemRow(p, list, order) {
   const el = document.createElement('div');
-  el.className = 'item' + (same(p, active) ? ' active' : '');
+  const live = show.running && same(show.path, p);
+  el.className = 'item' + (order ? ' prog' : '') + (live ? ' live-row' : '') + (same(p, active) ? ' active' : '');
   el.draggable = true;
   const r = recentOf(p);
   const thumb = itemThumb(p);
-  const live = show.running && same(show.path, p);
-  el.innerHTML = `<div class="thumb" ${thumb ? `style="background-image:url('${thumb.replace(/'/g, '%27')}')"` : ''}></div>
-    <div class="meta"><div class="name">${live ? '<span class="live-dot"></span>' : ''}${esc(r?.name ? baseName(r.name) : baseName(p))}</div>
+  const next = order && same(upNext(), p);
+  el.innerHTML = `${order ? `<span class="order">${order}</span>` : ''}<div class="thumb" ${thumb ? `style="background-image:url('${thumb.replace(/'/g, '%27')}')"` : ''}></div>
+    <div class="meta"><div class="name">${live ? '<span class="live-dot"></span>' : ''}${esc(r?.name ? baseName(r.name) : baseName(p))}${next ? `<span class="badge next">${esc(t('upNext'))}</span>` : ''}</div>
     <div class="sub">${esc(folderOf(p))}${r?.slide > 1 ? ' · ' + esc(t('slideN', { n: r.slide })) : ''}</div></div>
-    <button class="icon ghost more"><svg><use href="#i-more"/></svg></button>`;
+    <span class="acts">${order ? `<button class="icon ghost add x-prog" title="${esc(t('removeFromProgram'))}"><svg><use href="#i-x"/></svg></button>`
+      : !inProgram(p) ? `<button class="icon ghost add to-prog" title="${esc(t('addToProgram'))}"><svg><use href="#i-add"/></svg></button>` : ''}<button class="icon ghost more"><svg><use href="#i-more"/></svg></button></span>`;
   el.title = p;
-  el.onclick = e => { if (!e.target.closest('.more')) openDeck(p); };
-  el.ondblclick = e => { if (!e.target.closest('.more')) openDeck(p).then(ok => ok && startShow(1)); };
+  el.onclick = e => { if (!e.target.closest('.acts')) openDeck(p); };
+  el.ondblclick = e => { if (!e.target.closest('.acts')) openDeck(p).then(ok => ok && startShow(recentOf(p)?.slide || 1, p)); };
+  el.querySelector('.x-prog')?.addEventListener('click', e => { e.stopPropagation(); removeFromProgram(p); });
+  el.querySelector('.to-prog')?.addEventListener('click', e => { e.stopPropagation(); addToProgram(p); });
   el.querySelector('.more').onclick = e => { e.stopPropagation(); itemMenu(p, list, e.clientX, e.clientY); };
   el.oncontextmenu = e => { e.preventDefault(); itemMenu(p, list, e.clientX, e.clientY); };
-  el.ondragstart = e => { dragPath = p; e.dataTransfer.effectAllowed = 'copy'; };
+  el.ondragstart = e => { dragPath = p; e.dataTransfer.effectAllowed = 'copyMove'; };
   el.ondragend = () => { dragPath = null; };
+  if (order) {
+    // Reorder: drop on a row puts the dragged one before it.
+    el.addEventListener('dragover', e => { if (dragPath && !same(dragPath, p)) { e.preventDefault(); el.classList.add('drop-before'); } });
+    el.addEventListener('dragleave', () => el.classList.remove('drop-before'));
+    el.addEventListener('drop', e => {
+      e.preventDefault(); el.classList.remove('drop-before');
+      if (!dragPath) return;
+      if (!inProgram(dragPath)) library.program.push(dragPath);
+      moveInProgram(dragPath, p);
+    });
+  }
   api.fileExists(p).then(ok => { if (!ok) { el.classList.add('missing'); el.querySelector('.sub').textContent = t('fileMissing'); } });
   return el;
 }
 
 function itemMenu(p, list, x, y) {
   const items = [
-    { text: t('open'), icon: 'i-folder', run: () => openDeck(p) },
-    { text: t('fromStart'), icon: 'i-play', run: () => openDeck(p).then(ok => ok && startShow(1)) },
+    { text: t('look'), icon: 'i-folder', run: () => openDeck(p) },
+    { text: t('showFromStart'), icon: 'i-play', run: () => openDeck(p).then(ok => ok && startShow(1, p)) },
+    inProgram(p)
+      ? { text: t('removeFromProgram'), icon: 'i-x', run: () => removeFromProgram(p) }
+      : { text: t('addToProgram'), icon: 'i-add', run: () => addToProgram(p) },
     '-',
     { label: t('addToList') },
     ...library.lists.map(l => ({ text: l.name, icon: 'i-list', checked: l.items.some(x => same(x, p)), run: () => (l.items.some(x => same(x, p)) ? removeFromList(l, p) : addToList(l, p)) })),
@@ -184,7 +299,8 @@ function listMenu(l, x, y) {
     { text: t('rename'), run: async () => { const n = await ask(t('rename'), l.name); if (n) { l.name = n; saveLibrary(); renderLibrary(); } } },
     ...(i > 0 ? [{ text: t('moveUp'), run: () => { library.lists.splice(i, 1); library.lists.splice(i - 1, 0, l); saveLibrary(); renderLibrary(); } }] : []),
     ...(i < library.lists.length - 1 ? [{ text: t('moveDown'), run: () => { library.lists.splice(i, 1); library.lists.splice(i + 1, 0, l); saveLibrary(); renderLibrary(); } }] : []),
-    { text: t('openAll'), run: async () => { for (const p of l.items) await openDeck(p, true); if (l.items[0]) activate(l.items[0]); } },
+    { text: t('useAsProgram'), icon: 'i-play', run: () => useAsProgram(l) },
+    { text: t('addAllToProgram'), icon: 'i-add', run: () => { for (const p of l.items) addToProgram(p, true); toast(t('addedToProgram', { name: l.name })); } },
     '-',
     { text: t('deleteList'), danger: true, run: () => { library.lists = library.lists.filter(x => x !== l); saveLibrary(); renderLibrary(); } },
   ]);
@@ -210,6 +326,7 @@ function rememberThumb(d) {
 }
 
 // ---------- opening presentations ----------
+// Opening reads a presentation and shows it here (unless `background`); it never changes the screen.
 const opening = new Map();
 async function openDeck(p, background) {
   if (deckOf(p)) { if (!background) activate(p); return true; }
@@ -225,19 +342,12 @@ async function openDeck(p, background) {
   }
   if (!deckOf(p)) open.push(r.result);
   $('toast').hidden = true;
+  const program = library.program;
   library = await api.loadLibrary(); // main added it to the recents
+  library.program = program;
   if (!background) { selected = recentOf(p)?.slide || 1; activate(r.result.path); }
-  else { renderTabs(); renderLibrary(); }
+  else renderLibrary();
   return true;
-}
-
-async function closeDeck(p) {
-  const i = open.findIndex(d => same(d.path, p));
-  if (i < 0) return;
-  open.splice(i, 1);
-  await api.closeDeck(p);
-  if (same(active, p)) active = open[Math.min(i, open.length - 1)]?.path || null;
-  render();
 }
 
 function activate(p) {
@@ -246,26 +356,34 @@ function activate(p) {
   render();
 }
 
+// Files opened on purpose (Open, dropped, from Explorer) join the program.
 async function openFiles(paths) {
   let first = true;
-  for (const p of paths) { await openDeck(p, !first); first = false; }
+  for (const p of paths) { if (await openDeck(p, !first)) addToProgram(p, true); first = false; }
 }
 
-// ---------- tabs ----------
-function renderTabs() {
-  const box = $('tabs');
-  box.innerHTML = '';
-  for (const d of open) {
-    const el = document.createElement('div');
-    el.className = 'tab' + (same(d.path, active) ? ' active' : '');
-    el.title = d.path;
-    el.innerHTML = `${isLive(d) ? '<span class="live-dot"></span>' : ''}<span class="name">${esc(baseName(d.name))}</span><button class="x" title="${esc(t('close'))}"><svg><use href="#i-x"/></svg></button>`;
-    el.onclick = e => { if (!e.target.closest('.x')) activate(d.path); };
-    el.onauxclick = e => { if (e.button === 1) closeDeck(d.path); };
-    el.querySelector('.x').onclick = e => { e.stopPropagation(); closeDeck(d.path); };
-    box.appendChild(el);
-  }
+// ---------- "On screen": what the audience sees, from anywhere in the window ----------
+function renderOnAir() {
+  const on = show.running;
+  $('onAir').hidden = !on;
+  document.body.classList.toggle('previewing', on && !same(active, show.path));
+  if (!on) return;
+  const d = deckOf(show.path);
+  const parts = [`<b>${esc(d ? baseName(d.name) : baseName(show.path || ''))}</b>`];
+  if (show.named) parts.push(`<span class="named">${esc(show.named)}</span>`);
+  const sec = d && show.slide && d.sections.length ? sectionOfSlide(d, show.slide) : null;
+  if (sec?.name) parts.push(esc(sec.name));
+  parts.push(esc(show.slide ? t('slideOf', { n: show.slide, c: show.count || d?.slides.length || '' }) : t('endScreen')));
+  if (show.state === 3 || show.state === 4) parts.push(`<span class="named">${esc(show.state === 4 ? t('whiteOn') : t('blackOn'))}</span>`);
+  $('crumb').innerHTML = parts.join('<span class="sep">›</span>');
+  // The way back: out of a custom show, or to the presentation a link came from.
+  const back = show.named ? t('leaveNamed', { name: show.named }) : show.chain?.length ? t('backTo', { name: baseName(show.chain[show.chain.length - 1].path) }) : '';
+  $('chainBtn').hidden = !back;
+  $('chainBtn').querySelector('span').textContent = back;
+  $('chainBtn').title = back;
 }
+$('onAirBtn').onclick = () => { if (show.running && deckOf(show.path)) activate(deckOf(show.path).path); };
+$('chainBtn').onclick = () => api.showCmd({ action: 'back' });
 
 // ---------- sections and slides ----------
 // Sections as [{ name, first, count, index }]; a presentation without sections is one unnamed section.
@@ -274,6 +392,71 @@ function sectionsOf(d) {
   return [{ name: '', first: 1, count: d.slides.length, index: 1 }];
 }
 const sectionOfSlide = (d, n) => sectionsOf(d).find(s => n >= s.first && n < s.first + s.count) || sectionsOf(d)[0];
+const secKey = (d, sec) => d.path.toLowerCase() + '|' + sec.index;
+
+// ---------- the sections panel ----------
+// The sections of the presentation in the middle, the same everywhere: a click on a section (or
+// a slide) goes there when it's on the screen, or picks it when it's only looked at; the arrow
+// opens the section's slides. The live section is marked.
+let secSideKey = '';
+function renderSections() {
+  const d = activeDeck(), box = $('secList');
+  const live = isLive(d);
+  const here = live ? show.slide : selected;
+  const key = d ? [d.path, live, here, d.ready, [...expandedSecs].join(','), LANG].join('|') : LANG;
+  if (key === secSideKey) return;
+  secSideKey = key;
+  const keep = box.scrollTop;
+  box.innerHTML = '';
+  $('secSideDeck').textContent = d ? baseName(d.name) : '';
+  $('secSideTag').textContent = d ? (live ? t('liveTag') : show.running ? t('previewTag') : '') : '';
+  $('secSideTag').className = 'tag' + (live ? ' live' : '');
+  $('secSideTag').hidden = !$('secSideTag').textContent;
+  if (!d) { box.innerHTML = `<div class="sec-empty">${esc(t('noDeckSections'))}</div>`; return; }
+  box.style.setProperty('--ratio', `${d.width}/${d.height}`);
+  const secs = sectionsOf(d);
+  const act = n => (live ? api.showCmd({ action: 'go', n }) : pick(d, n));
+  for (const sec of secs) {
+    const k = secKey(d, sec);
+    const single = secs.length === 1 && !sec.name;
+    const has = here >= sec.first && here < sec.first + sec.count;
+    const row = document.createElement('div');
+    row.className = 'srow' + (single || expandedSecs.has(k) ? ' open' : '') + (has && !single ? (live ? ' current' : ' picked') : '');
+    if (!single) {
+      const head = document.createElement('div');
+      head.className = 'srow-head';
+      head.innerHTML = `<button class="caret-btn" title="${esc(t('tOpenSection'))}"><svg><use href="#i-caret"/></svg></button>
+        <button class="go" title="${esc(live ? t('goToSection', { name: sec.name }) : '')}"><b>${esc(sec.name || t('untitledSection'))}</b><span class="count">${sec.count}</span></button>`;
+      head.querySelector('.caret-btn').onclick = () => { expandedSecs.has(k) ? expandedSecs.delete(k) : expandedSecs.add(k); renderSections(); if (!live) renderDeck(); };
+      head.querySelector('.go').onclick = () => act(sec.first);
+      head.querySelector('.go').ondblclick = () => { if (!live) startShow(sec.first); };
+      row.appendChild(head);
+    }
+    const list = document.createElement('div');
+    list.className = 'srow-slides';
+    if (single || expandedSecs.has(k)) {
+      for (let n = sec.first; n < sec.first + sec.count; n++) {
+        const s = d.slides[n - 1], src = thumbUrl(d, n);
+        const el = document.createElement('div');
+        el.className = 'sslide' + (n === here ? (live ? ' current' : ' picked') : '') + (s.hidden ? ' hidden-slide' : '');
+        el.innerHTML = `<div class="pic" ${src ? `style="background-image:url('${src.replace(/'/g, '%27')}')"` : ''}><span class="no">${n}</span></div><div class="t">${esc(s.title || t('slideN', { n }))}</div>`;
+        el.onclick = () => act(n);
+        el.ondblclick = () => { if (!live) startShow(n); };
+        list.appendChild(el);
+      }
+    }
+    row.appendChild(list);
+    box.appendChild(row);
+  }
+  box.scrollTop = keep;
+}
+// Pick a slide of a presentation that's only looked at: selected in the grid, its section open.
+function pick(d, n) {
+  selected = n;
+  expandedSecs.add(secKey(d, sectionOfSlide(d, n)));
+  renderDeck(); renderSections();
+  $('grid').querySelector('.card.selected')?.scrollIntoView({ block: 'nearest' });
+}
 
 function slideCard(d, s, opts = {}) {
   const el = document.createElement('div');
@@ -289,6 +472,7 @@ function slideCard(d, s, opts = {}) {
     selected = s.index;
     for (const c of document.querySelectorAll('#grid .card.selected')) c.classList.remove('selected');
     el.classList.add('selected');
+    renderSections(); renderStartButtons();
   };
   el.ondblclick = () => { if (!isLive(d)) startShow(s.index); };
   return el;
@@ -300,9 +484,8 @@ function renderGrid(box, d, opts = {}) {
   box.style.setProperty('--ratio', `${d.width}/${d.height}`);
   const secs = sectionsOf(d);
   const curSec = isLive(d) ? sectionOfSlide(d, show.slide) : null;
-  if (box.id === 'grid' && gridDeck !== d.path.toLowerCase()) { gridDeck = d.path.toLowerCase(); expandedSecs.clear(); }
   for (const sec of secs) {
-    const key = d.path.toLowerCase() + '|' + sec.index;
+    const key = secKey(d, sec);
     const named = !!(sec.name || secs.length > 1);
     const wrap = document.createElement('div');
     wrap.className = 'sec' + (named && !expandedSecs.has(key) ? ' collapsed' : '') + (curSec === sec || curSec?.index === sec.index ? ' current-sec' : '');
@@ -319,6 +502,7 @@ function renderGrid(box, d, opts = {}) {
         }
         expandedSecs.has(key) ? expandedSecs.delete(key) : expandedSecs.add(key);
         wrap.classList.toggle('collapsed', !expandedSecs.has(key));
+        renderSections();
       };
       wrap.appendChild(head);
     }
@@ -357,7 +541,17 @@ function renderDeck() {
   const secs = d.sections.length;
   $('deckMeta').textContent = [t('slidesCount', { n: d.slides.length }), secs ? (secs === 1 ? t('oneSection') : t('sectionsCount', { n: secs })) : ''].filter(Boolean).join(' · ');
   $('showOnLabel').textContent = showOnText();
+  renderStartButtons();
   renderGrid($('grid'), d);
+}
+// "From the beginning", "Continue from slide N" (where it was left), "From this slide".
+function renderStartButtons() {
+  const d = activeDeck();
+  if (!d) return;
+  const resume = recentOf(d.path)?.slide || 1;
+  $('resumeBtn').hidden = !(resume > 1 && resume <= d.slides.length);
+  $('resumeBtn').querySelector('span').textContent = t('resumeAt', { n: resume });
+  $('startHereBtn').hidden = selected === 1 || selected === resume;
 }
 
 // ---------- presenter view ----------
@@ -385,12 +579,22 @@ async function setLive(sourceId) {
   }
 }
 
+// Inside a custom show its own slide order counts, not the presentation's.
+// (Only when the slide on screen is in its list, else the presentation's order.)
+const customShowOf = d => (show.named && d.customShows?.find(c => c.name === show.named && c.slides.includes(show.slide))) || null;
+function nextSlideOf(d, n) {
+  const cs = customShowOf(d);
+  if (cs) { const i = cs.slides.indexOf(n); return i + 1 < cs.slides.length ? cs.slides[i + 1] : 0; }
+  let m = n + 1;
+  while (m <= d.slides.length && d.slides[m - 1].hidden) m++;
+  return m <= d.slides.length ? m : 0;
+}
+
 function renderPresenter() {
   const d = activeDeck();
   if (!d || !isLive(d)) return;
   const n = show.slide || 0, count = d.slides.length;
   const slide = d.slides[n - 1];
-  $('pvDeck').textContent = baseName(d.name);
   $('currentImg').src = n ? thumbUrl(d, n) : '';
   if (document.activeElement !== $('slideNo')) $('slideNo').value = n || '—';
   $('slideCount').textContent = `/ ${count}`;
@@ -401,21 +605,21 @@ function renderPresenter() {
   badge.textContent = show.state === 4 ? t('whiteOn') : t('blackOn');
   $('blackBtn').classList.toggle('on', show.state === 3);
   $('whiteBtn').classList.toggle('on', show.state === 4);
-  // Next: another animation step on this slide, or the next visible slide.
+  // Next: another animation step on this slide, or the next slide of the show.
   const stepsLeft = (show.clicks || 0) - (show.click || 0);
-  let nextN = n + 1;
-  while (nextN <= count && d.slides[nextN - 1].hidden) nextN++;
+  const nextN = n ? nextSlideOf(d, n) : 0;
   if (n && stepsLeft > 0) {
     $('nextImg').src = thumbUrl(d, n);
     $('nextInfo').textContent = t('nextClick', { a: (show.click || 0) + 1, b: show.clicks });
     $('nextEnd').hidden = true;
-  } else if (n && nextN <= count) {
+  } else if (nextN) {
     $('nextImg').src = thumbUrl(d, nextN);
     $('nextInfo').textContent = t('slideN', { n: nextN });
     $('nextEnd').hidden = true;
   } else {
     $('nextImg').removeAttribute('src');
     $('nextInfo').textContent = '';
+    $('nextEnd').textContent = customShowOf(d) ? t('endOfNamed') : t('endOfShow');
     $('nextEnd').hidden = false;
   }
   $('notes').textContent = slide?.notes || '';
@@ -424,7 +628,7 @@ function renderPresenter() {
   if (pvGridOpen) renderGrid($('pvGridBody'), d, { closeGrid: true });
 }
 
-// The current section's slides under the live slide, with the sections as chips.
+// The current section's slides under the live slide (the sections themselves are in their panel).
 let stripKey = '';
 function renderStrip(d) {
   const sec = sectionOfSlide(d, show.slide || 1);
@@ -433,25 +637,12 @@ function renderStrip(d) {
   stripKey = key;
   const box = $('strip');
   box.innerHTML = '';
-  const secs = sectionsOf(d);
-  if (secs.length > 1) {
-    for (const s of secs) {
-      const chip = document.createElement('div');
-      chip.className = 'sec-chip' + (s.index === sec.index ? ' current' : '');
-      chip.textContent = s.name || t('untitledSection');
-      chip.title = t('goToSection', { name: s.name });
-      chip.onclick = () => api.showCmd({ action: 'go', n: s.first });
-      box.appendChild(chip);
-      if (s.index === sec.index) for (let n = s.first; n < s.first + s.count; n++) box.appendChild(slideCard(d, d.slides[n - 1], { strip: true }));
-    }
-  } else {
-    for (const s of d.slides) box.appendChild(slideCard(d, s, { strip: true }));
-  }
+  for (let n = sec.first; n < sec.first + sec.count; n++) box.appendChild(slideCard(d, d.slides[n - 1], { strip: true }));
   box.querySelector('.card.current')?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
 }
 
 function openPvGrid() {
-  pvGridOpen = true; expandedSecs.clear();
+  pvGridOpen = true;
   $('pvGrid').hidden = false; renderGrid($('pvGridBody'), activeDeck(), { closeGrid: true });
   $('pvGridBody').querySelector('.current-sec')?.scrollIntoView({ block: 'center' });
 }
@@ -491,41 +682,56 @@ setInterval(() => {
   $('elapsed').textContent = timerText();
   $('clock').textContent = new Date().toLocaleTimeString(LANG === 'ar' ? 'ar-EG' : [], { hour: 'numeric', minute: '2-digit' });
 }, 500);
+// The timer survives closing the app during a show (kept here until the show ends).
+const saveTimer = () => { try { localStorage.setItem('showTimer', JSON.stringify(timerStart ? { timerStart, timerPaused, timerPausedAt } : null)); } catch {} };
+function setTimerPaused() {
+  $('timerPause').querySelector('use').setAttribute('href', timerPausedAt ? '#i-play' : '#i-pause');
+  $('elapsed').parentElement.classList.toggle('paused', !!timerPausedAt);
+}
 $('timerPause').onclick = () => {
   if (timerPausedAt) { timerPaused += Date.now() - timerPausedAt; timerPausedAt = null; }
   else timerPausedAt = Date.now();
-  $('timerPause').querySelector('use').setAttribute('href', timerPausedAt ? '#i-play' : '#i-pause');
-  $('elapsed').parentElement.classList.toggle('paused', !!timerPausedAt);
+  setTimerPaused(); saveTimer();
   window.pushRemote?.();
 };
-$('timerReset').onclick = () => { timerStart = Date.now(); timerPaused = 0; if (timerPausedAt) timerPausedAt = Date.now(); window.pushRemote?.(); };
+$('timerReset').onclick = () => { timerStart = Date.now(); timerPaused = 0; if (timerPausedAt) timerPausedAt = Date.now(); saveTimer(); window.pushRemote?.(); };
 
 // ---------- the show ----------
-async function startShow(from) {
-  const d = activeDeck();
-  if (!d) return;
+// Put a presentation on the screen (the one looked at, unless told). Asks first when another one
+// is showing (`ask: false` when the phone already asked). It joins the program.
+async function startShow(from, p = active, opts = {}) {
+  const d = deckOf(p);
+  if (!d) return false;
+  if (opts.ask !== false && !(await confirmReplace(d.path))) return false;
+  addToProgram(d.path, true);
   toast(t('starting'));
   const r = await api.startShow(d.path, from || 1);
   $('toast').hidden = true;
-  if (!r.ok) { console.warn('start failed', r.error); toast(t('startFailed', { e: r.error })); return; }
-  timerStart = Date.now(); timerPaused = 0; timerPausedAt = null;
+  if (!r.ok) { console.warn('start failed', r.error); toast(t('startFailed', { e: r.error })); return false; }
+  timerStart = Date.now(); timerPaused = 0; timerPausedAt = null; saveTimer(); setTimerPaused();
+  if (opts.follow !== false) active = d.path;
   onShow(r.result);
+  return true;
 }
 
+// The window follows the show to another presentation (a link, the phone) only when it was
+// showing the live one, or nothing was on: never while the operator looks at something else.
+let followShow = false;
 function onShow(s) {
   const was = show;
   show = s;
   // The timer runs for the whole show, however it was started (here, the phone, PowerPoint).
-  if (s.running && !timerStart) { timerStart = Date.now(); timerPaused = 0; timerPausedAt = null; }
-  if (!s.running && was.running) timerStart = null;
-  // The show moved to another open presentation (or one we haven't opened): follow it.
-  if (s.running && s.path && !same(s.path, active)) {
-    if (deckOf(s.path)) active = deckOf(s.path).path;
+  if (s.running && !timerStart) { timerStart = Date.now(); timerPaused = 0; timerPausedAt = null; saveTimer(); }
+  if (!s.running && was.running) { timerStart = null; saveTimer(); }
+  let moved = false;
+  if (s.running && s.path && !same(s.path, active) && (!was.running || !active || same(active, was.path) || followShow)) {
+    if (deckOf(s.path)) { active = deckOf(s.path).path; moved = true; followShow = false; }
+    else followShow = true; // a link to one not read yet: follow it once it is (onDeckOpened)
   }
   if (s.running) setLive(s.sourceId);
   else setLive(null);
-  if (was.running !== s.running || !same(was.path, s.path)) render();
-  else { renderPresenter(); }
+  if (moved || was.running !== s.running || !same(was.path, s.path)) render();
+  else { renderPresenter(); renderOnAir(); renderSections(); }
   window.pushRemote?.();
 }
 
@@ -536,11 +742,24 @@ function render() {
   $('deckView').hidden = !d || live;
   $('presenter').hidden = !live;
   if (!live) closePvGrid();
-  renderTabs();
+  renderOnAir();
   renderLibrary();
   if (d && !live) renderDeck();
   if (live) { stripKey = ''; renderPresenter(); }
+  renderSections();
   window.pushRemote?.();
+}
+
+// Ending the show takes two presses (the button, or Esc), so a stray one never ends it.
+let endArmedUntil = 0, endArmTimer;
+function disarmEnd() { endArmedUntil = 0; $('endBtn').classList.remove('armed'); $('endBtn').querySelector('span').textContent = t('endShow'); }
+function endShowSafely(byKey) {
+  if (Date.now() < endArmedUntil) { clearTimeout(endArmTimer); disarmEnd(); cmd('end'); return; }
+  endArmedUntil = Date.now() + 2500;
+  $('endBtn').classList.add('armed');
+  $('endBtn').querySelector('span').textContent = t('endAgainBtn');
+  toast(byKey ? t('escAgain') : t('endAgain'));
+  clearTimeout(endArmTimer); endArmTimer = setTimeout(disarmEnd, 2500);
 }
 
 const cmd = action => api.showCmd({ action });
@@ -548,10 +767,11 @@ $('nextBtn').onclick = () => cmd('next');
 $('prevBtn').onclick = () => cmd('prev');
 $('blackBtn').onclick = () => cmd('black');
 $('whiteBtn').onclick = () => cmd('white');
-$('endBtn').onclick = () => cmd('end');
+$('endBtn').onclick = () => endShowSafely(false);
 $('gridBtn').onclick = () => (pvGridOpen ? closePvGrid() : openPvGrid());
 $('pvGridClose').onclick = closePvGrid;
 $('startBtn').onclick = () => startShow(1);
+$('resumeBtn').onclick = () => startShow(recentOf(active)?.slide || 1);
 $('startHereBtn').onclick = () => startShow(selected);
 $('showOnBtn').onclick = showOnMenu;
 $('slideNo').addEventListener('keydown', e => {
@@ -585,19 +805,27 @@ addEventListener('keydown', e => {
   const live = isLive(d);
   const k = e.key;
   if (e.ctrlKey && (k === 'o' || k === 'O')) { e.preventDefault(); $('openBtn').click(); return; }
+  if (e.ctrlKey && e.shiftKey && (k === 'b' || k === 'B')) { e.preventDefault(); toggleSections(); return; }
   if (e.ctrlKey && (k === 'b' || k === 'B')) { e.preventDefault(); toggleSidebar(); return; }
-  if (e.ctrlKey && k === 'Tab' && open.length > 1) {
+  // Ctrl+Tab: look at the next presentation of the program (the screen doesn't change).
+  if (e.ctrlKey && k === 'Tab' && library.program.length) {
     e.preventDefault();
-    const i = open.findIndex(x => same(x.path, active));
-    activate(open[(i + (e.shiftKey ? -1 : 1) + open.length) % open.length].path);
+    const list = library.program, i = list.findIndex(x => same(x, active));
+    openDeck(list[(i + (e.shiftKey ? -1 : 1) + list.length) % list.length]);
     return;
   }
   if (k === '?' ) { showKeys(); return; }
   if (k === 'F5') { e.preventDefault(); if (d && !live) startShow(e.shiftKey ? selected : 1); return; }
-  if (!live) {
+  // While a show runs, the keys drive it, whatever is looked at here.
+  if (!show.running) {
     if (!d) return;
     const n = d.slides.length;
-    const move = to => { selected = Math.max(1, Math.min(n, to)); renderDeck(); $('grid').querySelector('.card.selected')?.scrollIntoView({ block: 'nearest' }); };
+    // The selected slide's section opens, so the selection is never hidden in a closed one.
+    const move = to => {
+      selected = Math.max(1, Math.min(n, to));
+      expandedSecs.add(d.path.toLowerCase() + '|' + sectionOfSlide(d, selected).index);
+      renderDeck(); $('grid').querySelector('.card.selected')?.scrollIntoView({ block: 'nearest' });
+    };
     if (k === 'ArrowRight' || k === 'ArrowDown') { e.preventDefault(); move(selected + 1); }
     else if (k === 'ArrowLeft' || k === 'ArrowUp') { e.preventDefault(); move(selected - 1); }
     else if (k === 'Home') move(1);
@@ -616,8 +844,8 @@ addEventListener('keydown', e => {
   else if (k === 'End') cmd('last');
   else if (k === 'b' || k === 'B' || k === '.') cmd('black');
   else if (k === 'w' || k === 'W' || k === ',') cmd('white');
-  else if (k === 'g' || k === 'G' || k === '-') (pvGridOpen ? closePvGrid() : openPvGrid());
-  else if (k === 'Escape') { if (pvGridOpen) closePvGrid(); else cmd('end'); }
+  else if ((k === 'g' || k === 'G' || k === '-') && live) (pvGridOpen ? closePvGrid() : openPvGrid());
+  else if (k === 'Escape') { if (pvGridOpen) closePvGrid(); else endShowSafely(true); }
 });
 
 function showKeys() {
@@ -626,33 +854,42 @@ function showKeys() {
     ${row(['F5'], t('kStart'))}${row(['Shift', 'F5'], t('kStartHere'))}
     ${row(['→', 'Space', 'PgDn'], t('kNext'))}${row(['←', 'PgUp'], t('kPrev'))}
     ${row(['5', 'Enter'], t('kGoTo'))}${row(['Home', 'End'], t('kFirstLast'))}
-    ${row(['G'], t('kGrid'))}${row(['B'], t('kBlack'))}${row(['W'], t('kWhite'))}${row(['Esc'], t('kEnd'))}
-    ${row(['Ctrl', 'O'], t('kOpen'))}${row(['Ctrl', 'Tab'], t('kTabs'))}${row(['Ctrl', 'B'], t('kSidebar'))}
+    ${row(['G'], t('kGrid'))}${row(['B'], t('kBlack'))}${row(['W'], t('kWhite'))}${row(['Esc', 'Esc'], t('kEnd'))}
+    ${row(['Ctrl', 'O'], t('kOpen'))}${row(['Ctrl', 'Tab'], t('kTabs'))}${row(['Ctrl', 'B'], t('kSidebar'))}${row(['Ctrl', 'Shift', 'B'], t('kSections'))}
   </div><div class="actions"><button class="primary" id="mClose">${esc(t('ok'))}</button></div>`, c => { c.querySelector('#mClose').onclick = closeModal; });
 }
 $('keysBtn').onclick = showKeys;
 
-// ---------- side panel: show/hide, resize ----------
-function toggleSidebar() {
-  settings.sidebarHidden = !settings.sidebarHidden;
-  document.body.classList.toggle('side-hidden', settings.sidebarHidden);
-  api.setSetting('sidebarHidden', settings.sidebarHidden);
+// ---------- the two side panels: show/hide, resize ----------
+// The program and library on the start side, the sections on the end side (they swap in Arabic).
+function setPanels() {
+  document.body.classList.toggle('side-hidden', !!settings.sidebarHidden);
+  document.body.classList.toggle('sec-hidden', !!settings.sectionsHidden);
+  $('sidebarBtn').classList.toggle('on', !settings.sidebarHidden);
+  $('sectionsBtn').classList.toggle('on', !settings.sectionsHidden);
 }
+function toggleSidebar() { settings.sidebarHidden = !settings.sidebarHidden; api.setSetting('sidebarHidden', settings.sidebarHidden); setPanels(); }
+function toggleSections() { settings.sectionsHidden = !settings.sectionsHidden; api.setSetting('sectionsHidden', settings.sectionsHidden); setPanels(); }
 $('sidebarBtn').onclick = toggleSidebar;
-(() => {
-  const grip = $('sideGrip');
+$('sectionsBtn').onclick = toggleSections;
+function resizer(gripId, panelId, setting, cssVar, def, endSide) {
+  const grip = $(gripId);
   let startX = 0, startW = 0;
-  const setW = w => { settings.sidebarWidth = Math.max(240, Math.min(520, w)); document.documentElement.style.setProperty('--side-w', settings.sidebarWidth + 'px'); };
+  const setW = w => { settings[setting] = Math.max(220, Math.min(520, w)); document.documentElement.style.setProperty(cssVar, settings[setting] + 'px'); };
   grip.addEventListener('pointerdown', e => {
-    startX = e.clientX; startW = $('side').getBoundingClientRect().width;
+    startX = e.clientX; startW = $(panelId).getBoundingClientRect().width;
     grip.setPointerCapture(e.pointerId);
-    const move = ev => setW(startW + (document.documentElement.dir === 'rtl' ? startX - ev.clientX : ev.clientX - startX));
-    const up = () => { grip.removeEventListener('pointermove', move); grip.removeEventListener('pointerup', up); api.setSetting('sidebarWidth', settings.sidebarWidth); };
+    // Dragging away from the panel's own side makes it wider.
+    const sign = (document.documentElement.dir === 'rtl') !== endSide ? -1 : 1;
+    const move = ev => setW(startW + sign * (ev.clientX - startX));
+    const up = () => { grip.removeEventListener('pointermove', move); grip.removeEventListener('pointerup', up); api.setSetting(setting, settings[setting]); };
     grip.addEventListener('pointermove', move);
     grip.addEventListener('pointerup', up);
   });
-  grip.addEventListener('dblclick', () => { setW(300); api.setSetting('sidebarWidth', 300); });
-})();
+  grip.addEventListener('dblclick', () => { setW(def); api.setSetting(setting, def); });
+}
+resizer('sideGrip', 'side', 'sidebarWidth', '--side-w', 300, false);
+resizer('secGrip', 'secSide', 'sectionsWidth', '--sec-w', 280, true);
 
 // ---------- open, drop ----------
 $('openBtn').onclick = async () => { const files = await api.pickDecks(t('open')); if (files.length) openFiles(files); };
@@ -722,11 +959,12 @@ $('updateBtn').onclick = async () => {
 
 // ---------- events from main ----------
 api.onShowState(onShow);
-// A link in the slides opened another presentation: it joins the tabs, and the view follows the show.
+// A link in the slides opened another presentation (it's not added to the program: "On screen"
+// shows where it came from). The view follows it if it was following the show.
 api.onDeckOpened(d => {
   if (!d?.path) return;
   if (!deckOf(d.path)) open.push(d);
-  if (show.running && same(show.path, d.path)) active = deckOf(d.path).path;
+  if (show.running && same(show.path, d.path) && (followShow || !active)) { active = deckOf(d.path).path; followShow = false; }
   api.loadLibrary().then(lib => { library = lib; render(); });
 });
 api.onNotice(n => toast(t(n.key, n)));
@@ -735,7 +973,7 @@ api.onThumbs(({ path: p, ready }) => {
   if (!d) return;
   d.ready = ready;
   if (ready >= 1) rememberThumb(d);
-  if (same(p, active)) { if (isLive(d)) { stripKey = ''; renderPresenter(); } else renderDeck(); }
+  if (same(p, active)) { if (isLive(d)) { stripKey = ''; renderPresenter(); } else renderDeck(); renderSections(); }
   if (ready === 1 || ready === d.slides.length) { renderLibrary(); }
   window.pushRemote?.();
 });
@@ -747,17 +985,23 @@ api.onOpenFiles(openFiles);
 addEventListener('DOMContentLoaded', async () => {
   settings = await api.getSettings();
   applyLang(settings.lang || 'en');
-  if (settings.sidebarHidden) document.body.classList.add('side-hidden');
+  setPanels();
   if (settings.sidebarWidth) document.documentElement.style.setProperty('--side-w', settings.sidebarWidth + 'px');
+  if (settings.sectionsWidth) document.documentElement.style.setProperty('--sec-w', settings.sectionsWidth + 'px');
   document.documentElement.style.setProperty('--notes-size', (settings.notesSize || 18) + 'px');
   $('gridSize').value = settings.thumbSize || 220;
   document.documentElement.style.setProperty('--thumb', $('gridSize').value + 'px');
   library = await api.loadLibrary();
+  library.program ||= [];
   displays = await api.getDisplays();
   render();
   const files = await api.takeOpenFiles();
   if (files.length) openFiles(files);
   const s = await api.showState();
-  if (s.running) onShow(s);
+  if (s.running) {
+    // Back after a restart during a show: the same timer.
+    try { const saved = JSON.parse(localStorage.getItem('showTimer') || 'null'); if (saved?.timerStart) ({ timerStart, timerPaused, timerPausedAt } = saved); setTimerPaused(); } catch {}
+    onShow(s);
+  } else if (!files.length && library.program[0]) openDeck(library.program[0]); // tonight's first one, ready to look at
   initRemote();
 });

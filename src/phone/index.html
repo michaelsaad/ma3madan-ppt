@@ -259,7 +259,59 @@
   #pStartBtn.pbig { background: var(--accent); border-color: var(--accent); }
   .pbig.wide svg { width: 28px; height: 28px; }
   .grid button.on.white { background: #f3f4f6; border-color: #f3f4f6; color: #111; }
-  .pnotes { white-space: pre-wrap; font-size: 17px; line-height: 1.6; max-height: 40vh; overflow-y: auto; user-select: text; }
+  .pnotes { white-space: pre-wrap; font-size: var(--pnotes, 17px); line-height: 1.6; max-height: 40vh; overflow-y: auto; user-select: text; }
+  /* PPT in three parts: the show, the sections, the program (the bottom bar switches them) */
+  .tabs.ppt-mode { grid-template-columns: .75fr 1fr 1fr 1fr; }
+  .tabs.ppt-mode button[data-tab="play"] span { font-size: 11px; }
+  .tabs .part[hidden], .tabs button[data-tab][hidden] { display: none; }
+  .ppart { display: flex; flex-direction: column; gap: 14px; }
+  .ppart[hidden] { display: none; }
+  .pstage-tools { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: #000; }
+  .ptool { min-height: 38px; min-width: 38px; padding: 0 12px; gap: 6px; border-radius: 12px; font-size: 13px; background: #121a2a; border: 1px solid #26324a; color: #c9d2e3; }
+  .ptool svg { width: 18px; height: 18px; }
+  .ptool[aria-pressed="true"] { background: var(--gold); border-color: var(--gold); color: #1b1300; }
+  body.pfull .pstage-tools { display: none; }
+  .pmini { position: sticky; top: var(--hh, 56px); z-index: 4; display: flex; align-items: center; gap: 8px; margin: -6px -14px 0; padding: 8px 12px; background: #000; border-bottom: 1px solid var(--line); }
+  .pmini[hidden] { display: none; }
+  .pmini-where { flex: 1; min-width: 0; min-height: 48px; justify-content: flex-start; gap: 8px; padding: 0 10px; border-radius: 12px; background: #121a2a; border: 1px solid #26324a; }
+  .pmini-where b { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px; }
+  .pmini-where span:last-child { color: var(--gold); font-weight: 600; font-size: 13px; white-space: nowrap; }
+  .pmini-where .status { font-size: 10.5px; padding: 2px 7px; flex: none; }
+  .pmini-btn { min-height: 48px; min-width: 56px; width: 56px; padding: 0; border-radius: 14px; background: #1d2a44; border: 1px solid #2f3f60; direction: ltr; }
+  .pmini-btn svg { width: 28px; height: 28px; }
+  .plost { position: sticky; top: var(--hh, 56px); z-index: 6; display: flex; align-items: center; justify-content: center; gap: 10px; margin: -6px -14px 0; padding: 10px; background: #5b1d20; color: #fff; font-weight: 600; font-size: 14px; }
+  .plost[hidden] { display: none; }
+  body.plost-on #p-remoteUi .pbig, body.plost-on #p-remoteUi .pctl button, body.plost-on .pmini-btn { opacity: .4; }
+  body.plost-on .status.live { background: #4a5266; }
+  .pchain { min-height: 44px; justify-content: flex-start; gap: 8px; padding: 0 12px; border-radius: 12px; background: var(--panel-2); border: 1px solid var(--gold); color: var(--gold); font-weight: 600; font-size: 14px; }
+  .pchain[hidden] { display: none; }
+  .pchain span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pchain svg { width: 20px; height: 20px; flex: none; }
+  .pctl { grid-template-columns: repeat(3, 1fr); }
+  .pend { position: relative; overflow: hidden; }
+  .pend .hold { position: absolute; inset: 0; background: var(--live); transform-origin: left; transform: scaleX(0); }
+  [dir=rtl] .pend .hold { transform-origin: right; }
+  .pend.holding .hold { transform: scaleX(1); transition: transform 1s linear; }
+  .pend svg, .pend span { position: relative; }
+  .pend span { white-space: normal; text-align: center; line-height: 1.25; }
+  .pnotes-head { display: flex; align-items: center; gap: 8px; margin: 0; }
+  .pnotes-head .ptool { min-height: 34px; padding: 0 10px; font-weight: 700; }
+  .psec-title { display: flex; align-items: baseline; gap: 10px; margin: 2px 4px 0; }
+  .psec-title small { color: var(--muted); font-weight: 400; font-size: 13px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ppreview { border-color: var(--accent); gap: 10px; }
+  .ppreview[hidden] { display: none; }
+  .ppreview-top { display: flex; align-items: center; gap: 10px; }
+  .ppreview-top b { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 16px; }
+  .tag { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--line); color: var(--muted); flex: none; }
+  .pmid { min-height: 56px; border-radius: 16px; font-size: 15px; font-weight: 600; gap: 8px; }
+  .pmid[hidden] { display: none; }
+  .pmid svg { width: 20px; height: 20px; }
+  .pgroup li .nextup { font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: #16274a; color: #8fb5ff; flex: none; }
+  .pgroup li .ord { font: 600 12px ui-monospace, Consolas, monospace; color: var(--muted); min-width: 16px; text-align: center; flex: none; }
+  .pask { align-items: flex-end; }
+  .pask-body { padding: 20px 18px 18px; display: flex; flex-direction: column; gap: 12px; }
+  .pask-body b { font-size: 17px; }
+  .pask-body p { margin: 0; color: var(--muted); line-height: 1.6; }
   .pnotes.empty { color: var(--muted); font-size: 14px; }
   .psections, .pdecks { display: flex; flex-direction: column; gap: 8px; }
   .psec { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
@@ -271,6 +323,10 @@
   .caret { width: 20px !important; height: 20px !important; color: var(--muted); transition: transform .15s; transform: rotate(-90deg); }
   [dir=rtl] .caret { transform: rotate(90deg); }
   .open > button > .caret, .psec.open .caret, .pgroup.open .caret { transform: none; }
+  .psec-row { display: flex; align-items: stretch; }
+  .psec-caret { width: 48px; min-width: 48px; min-height: 54px; padding: 0; border: 0; border-radius: 0; background: transparent; }
+  .psec-row .psec-head { flex: 1; min-width: 0; padding-inline-start: 0; }
+  .pgroup li > .caret { margin-inline-start: auto; }
   .psec-head .go { width: 44px; height: 40px; border-radius: 12px; background: var(--panel-2); display: grid; place-items: center; }
   .psec-head .go svg { width: 18px; height: 18px; }
   .pslides { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 4px 10px 12px; }
@@ -380,6 +436,9 @@
   <symbol id="i-expand" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-shrink" viewBox="0 0 24 24"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-screens" viewBox="0 0 24 24"><rect x="2.5" y="4" width="12" height="9" rx="1.5" stroke="currentColor" stroke-width="2" fill="none"/><rect x="9.5" y="9" width="12" height="9" rx="1.5" stroke="currentColor" stroke-width="2" fill="none"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="4" cy="6" r="1.5" fill="currentColor"/><circle cx="4" cy="12" r="1.5" fill="currentColor"/><circle cx="4" cy="18" r="1.5" fill="currentColor"/></symbol>
+  <symbol id="i-return" viewBox="0 0 24 24"><path d="M9 14L4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-hand" viewBox="0 0 24 24"><path d="M9 11V5.5a1.5 1.5 0 0 1 3 0V10m0-1.5a1.5 1.5 0 0 1 3 0V11m0-1a1.5 1.5 0 0 1 3 0v4.5a6.5 6.5 0 0 1-6.5 6.5h-.6a5 5 0 0 1-4.1-2.2L4.6 15a1.6 1.6 0 0 1 2.6-1.9L9 15" stroke="currentColor" stroke-width="1.9" fill="none" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-retry" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.4-5.7M4 4v4h4" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></symbol>
 </svg>
 
@@ -470,6 +529,14 @@
       <button id="cdBtn" class="cd"><svg><use href="#i-timer"/></svg><span id="cdLabel"></span></button>
       <button data-a="karaoke" id="karaokeBtn" class="karaoke"><svg><use href="#i-mic"/></svg><span id="karaokeLabel"></span></button>
     </div>
+    <!-- The minutes open right under the Countdown button, where the finger is -->
+    <div id="cdPanel" class="card cd-panel" hidden>
+      <b data-s="cdTitle"></b>
+      <div class="cd-chips">
+        <button data-min="1">1</button><button data-min="2">2</button><button data-min="5">5</button><button data-min="10">10</button><button data-min="15">15</button>
+      </div>
+      <button id="cdStop" class="cd-stop" data-s="cdStop" hidden></button>
+    </div>
     <section id="mixCard" class="card mix-card" hidden>
       <b class="card-title"><svg><use href="#i-mic"/></svg><span data-s="vocalRemover"></span></b>
       <div id="mixPresets" class="seg wide">
@@ -487,13 +554,6 @@
       <button id="audioStandbyBtn" class="tog" data-s="audioStandby"></button>
     </section>
 
-    <div id="cdPanel" class="card cd-panel" hidden>
-      <b data-s="cdTitle"></b>
-      <div class="cd-chips">
-        <button data-min="1">1</button><button data-min="2">2</button><button data-min="5">5</button><button data-min="10">10</button><button data-min="15">15</button>
-      </div>
-      <button id="cdStop" class="cd-stop" data-s="cdStop" hidden></button>
-    </div>
     
     <div class="vol card">
       <button data-a="mute" id="muteBtn"><svg><use href="#i-vol"/></svg></button>
@@ -560,24 +620,40 @@
   </section>
 
   <div id="p-remoteUi" class="screen" hidden>
+    <!-- The connection dropped: the remote stays, but nothing it shows is sure until it's back -->
+    <div id="pLost" class="plost" hidden><i class="mini-spin"></i><span data-s="reconnecting"></span></div>
+    <!-- On the Sections and Program parts: what's on the screen, with back/next, always in reach -->
+    <div id="pMini" class="pmini" hidden>
+      <button id="pMiniWhere" class="pmini-where"><span id="pMiniStatus" class="status"></span><b id="pMiniDeck" dir="auto"></b><span id="pMiniPos"></span></button>
+      <button data-p="prev" class="pmini-btn" aria-label="Previous"><svg><use href="#i-left"/></svg></button>
+      <button data-p="next" class="pmini-btn" aria-label="Next"><svg><use href="#i-right"/></svg></button>
+    </div>
     <div id="pStage" class="pstage">
       <div id="pSlide" class="pslide-main"><img id="pSlideImg" alt=""><p id="pEmpty" class="pempty" data-s="noDeck"></p>
-        <button id="pFullBtn" class="pfull-btn" aria-label="Full screen"><svg><use href="#i-expand"/></svg></button>
 </div>
       <!-- Full screen: every control in one column on the right edge, under the right thumb -->
       <div id="pFullBar" class="pfull-bar">
         <button id="pFullClose" class="fb-round" aria-label="Close"><svg><use href="#i-x"/></svg></button>
         <button class="fb-round" data-tree aria-label="Sections"><svg><use href="#i-tree"/></svg></button>
+        <button class="fb-round" data-screen="3" id="pFullBlack" aria-label="Black"><svg><use href="#i-black"/></svg></button>
         <span class="fb-grow"></span>
         <button data-p="prev" class="fb-prev" aria-label="Previous"><svg><use href="#i-left"/></svg></button>
         <span id="pFullPos" class="pfull-pos"></span>
         <button data-p="next" class="fb-next" aria-label="Next"><svg><use href="#i-right"/></svg></button>
       </div>
       <div class="pstage-bar"><span id="pStatus" class="status"></span><b id="pStagePos"></b><span id="pStageSec" dir="auto"></span><span id="pDeck" class="pdeck" dir="auto"></span></div>
+      <div class="pstage-tools">
+        <button id="pClickMode" class="ptool" aria-pressed="false"><svg><use href="#i-hand"/></svg><span data-s="clickMode"></span></button>
+        <span class="grow"></span>
+        <button id="pFullBtn" class="ptool" aria-label="Full screen"><svg><use href="#i-expand"/></svg><span data-s="fullscreen"></span></button>
+      </div>
     </div>
+
+    <div class="ppart" data-part="show">
     <section class="card">
       <div class="ppos"><b id="pPos"></b><span id="pSec" dir="auto"></span><span id="pStep"></span><span class="grow"></span><span id="pTimer" class="ptimer"></span></div>
-      <p id="pHint" class="phint" data-s="tapHint"></p>
+      <button id="pChain" class="pchain" hidden><svg><use href="#i-return"/></svg><span dir="auto"></span></button>
+      <p id="pHint" class="phint" data-s="clickHint"></p>
       <div id="pPlayRow" class="prow">
         <button data-p="prev" class="pbig" aria-label="Previous"><svg><use href="#i-left"/></svg></button>
         <button data-p="next" class="pbig" aria-label="Next"><svg><use href="#i-right"/></svg></button>
@@ -588,25 +664,43 @@
     </section>
 
     <div id="pControls" class="grid pctl">
-      <button data-tree><svg><use href="#i-tree"/></svg><span data-s="sections"></span></button>
-      <button data-p="black" id="pBlackBtn"><svg><use href="#i-black"/></svg><span data-s="black"></span></button>
-      <button data-p="white" id="pWhiteBtn" class="white"><svg><use href="#i-white"/></svg><span data-s="white"></span></button>
-      <button data-p="end" class="pend"><svg><use href="#i-stop"/></svg><span data-s="end"></span></button>
+      <button data-screen="3" id="pBlackBtn"><svg><use href="#i-black"/></svg><span data-s="black"></span></button>
+      <button data-screen="4" id="pWhiteBtn" class="white"><svg><use href="#i-white"/></svg><span data-s="white"></span></button>
+      <button id="pEndBtn" class="pend"><i class="hold"></i><svg><use href="#i-stop"/></svg><span data-s="holdEnd"></span></button>
     </div>
 
     <section id="pNotesBox" class="card pnotes-card">
-      <h3><span data-s="notes"></span></h3>
+      <h3 class="pnotes-head"><span data-s="notes"></span><span class="grow"></span>
+        <button id="pNotesDown" class="ptool" aria-label="Smaller">A−</button><button id="pNotesUp" class="ptool" aria-label="Bigger">A+</button></h3>
       <div id="pNotes" class="pnotes" dir="auto"></div>
     </section>
+    </div>
 
-    <h3 id="pSectionsHead"><span data-s="sections"></span></h3>
-    <div id="pSections" class="psections"></div>
+    <div class="ppart" data-part="secs" hidden>
+      <div id="pPreview" class="card ppreview" hidden>
+        <div class="ppreview-top"><span class="tag" data-s="previewTag"></span><b id="pPreviewName" dir="auto"></b><button id="pPreviewClose" class="ptool" aria-label="Close"><svg><use href="#i-x"/></svg></button></div>
+        <p class="phint" data-s="previewHint"></p>
+        <div class="prow"><button id="pPreviewResume" class="pmid"><svg><use href="#i-play"/></svg><span></span></button><button id="pPreviewStart" class="pmid primary"><svg><use href="#i-play"/></svg><span data-s="fromStart"></span></button></div>
+      </div>
+      <h3 id="pSectionsHead" class="psec-title"><span data-s="sections"></span><small id="pSectionsDeck" dir="auto"></small></h3>
+      <div id="pSections" class="psections"></div>
+    </div>
 
-    <div id="pDecks" class="pdecks"></div>
+    <div class="ppart" data-part="prog" hidden>
+      <div id="pDecks" class="pdecks"></div>
+    </div>
   </div>
+
 </main>
 </div>
 
+<!-- A question before something the audience would see change -->
+<div id="pAsk" class="ptree pask" hidden>
+  <div class="ptree-sheet" role="dialog" aria-modal="true">
+    <div class="pask-body"><b id="pAskTitle" dir="auto"></b><p id="pAskText" dir="auto"></p>
+      <div class="prow"><button id="pAskNo" class="pmid" data-s="cancel"></button><button id="pAskYes" class="pmid primary"></button></div></div>
+  </div>
+</div>
 <div id="pTree" class="ptree" hidden>
   <div class="ptree-sheet" role="dialog" aria-modal="true">
     <div class="ptree-head"><b data-s="sections"></b><span id="pTreeDeck" dir="auto"></span><button id="pTreeClose" aria-label="Close"><svg><use href="#i-x"/></svg></button></div>
@@ -616,6 +710,9 @@
 <nav class="tabs">
   <button data-tab="play" class="on"><svg><use href="#i-play"/></svg><span>Ma3madan Play</span></button>
   <button data-tab="ppt"><svg><use href="#i-slides"/></svg><span data-s="slidesTab"></span></button>
+  <button data-part="show" class="part" hidden><svg><use href="#i-slides"/></svg><span data-s="partShow"></span></button>
+  <button data-part="secs" class="part" hidden><svg><use href="#i-tree"/></svg><span data-s="sections"></span></button>
+  <button data-part="prog" class="part" hidden><svg><use href="#i-list"/></svg><span data-s="program"></span></button>
 </nav>
 </div>
 

@@ -24,8 +24,9 @@ module.exports = async function selftest(win, { app, ppt }) {
   try {
     await until('document.readyState === "complete" && typeof openDeck === "function"');
     if (process.env.MP_LANG) await js(`applyLang(${JSON.stringify(process.env.MP_LANG)}); render()`);
-    await js(`openDeck(${JSON.stringify(deck)})`);
+    await js(`openFiles([${JSON.stringify(deck)}])`);
     await until('activeDeck() && activeDeck().ready === activeDeck().slides.length');
+    assert.strictEqual(await js('library.program.length'), 1); // opened on purpose: it joins the program
     await wait(400);
     const secs = await js('[...document.querySelectorAll("#grid .sec-head b")].map(b => b.textContent)');
     assert.deepStrictEqual(secs, ['Opening', 'Sermon', 'Hymns']);
@@ -33,10 +34,12 @@ module.exports = async function selftest(win, { app, ppt }) {
     await shot('1-deck');
     log('deck view ok');
 
-    // Collapse a section, then open it again.
+    // Sections start closed: open one, and it's open in the sections panel too; then close it.
+    assert.strictEqual(await js('document.querySelectorAll("#secList .srow").length'), 3);
     await js('document.querySelectorAll("#grid .sec-head")[1].click()');
-    assert.ok(await js('document.querySelectorAll("#grid .sec")[1].classList.contains("collapsed")'));
-    await shot('2-collapsed');
+    assert.ok(!(await js('document.querySelectorAll("#grid .sec")[1].classList.contains("collapsed")')));
+    assert.ok(await js('document.querySelectorAll("#secList .srow")[1].classList.contains("open")'));
+    await shot('2-section-open');
     await js('document.querySelectorAll("#grid .sec-head")[1].click()');
 
     // The show, on slide 2.
@@ -85,6 +88,7 @@ module.exports = async function selftest(win, { app, ppt }) {
     assert.deepStrictEqual(await js('activeDeck().sections.map(s => s.name)'), ['Linked']);
     assert.strictEqual(await js('open.length'), 2);
     assert.strictEqual((await js('remoteState()')).deck.sections[0].name, 'Linked');
+    assert.ok(!(await js('document.getElementById("chainBtn").hidden'))); // "Back to test"
     await shot('4b-linked');
     log('followed the link to another presentation');
     await js('cmd("last")');
@@ -93,6 +97,22 @@ module.exports = async function selftest(win, { app, ppt }) {
     await until('show.running && /test\\.pptx$/i.test(show.path) && show.slide === 6', 15000);
     log('came back after it');
     log('click-through ok, state', await js('show.state'));
+
+    // One Esc never ends the show.
+    await js('document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))');
+    await wait(600);
+    assert.ok(await js('show.running'));
+    await wait(2600); // disarmed again
+    // Looking at another presentation doesn't change the screen, and the keys still drive the show.
+    await js(`openDeck(${JSON.stringify(path.join(__dirname, 'test2.pptx'))})`);
+    await until('/test2\.pptx$/i.test(active) && !document.getElementById("deckView").hidden');
+    assert.ok(await js('/test\.pptx$/i.test(show.path) && document.body.classList.contains("previewing")'));
+    await shot('6a-previewing');
+    await js('document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }))');
+    await until('show.slide === 7');
+    await js('document.getElementById("onAirBtn").click()');
+    await until('/test\.pptx$/i.test(active) && !document.getElementById("presenter").hidden');
+    log('preview while showing ok');
 
     await js('cmd("black")');
     await until('show.state === 3');
@@ -116,6 +136,7 @@ module.exports = async function selftest(win, { app, ppt }) {
     assert.strictEqual(st.app, 'ppt');
     assert.deepStrictEqual(st.deck.sections.map(s => s.name), ['Opening', 'Sermon', 'Hymns']);
     assert.strictEqual(st.deck.slides.length, 7);
+    assert.ok(st.caps.includes('program') && st.program.length === 1);
     assert.ok((await js(`remoteThumb('3|big|' + ${JSON.stringify(deck)})`)).startsWith('data:image/jpeg;base64,'));
     await js(`remoteCommand({ action: 'start', n: 4 })`);
     log('toast:', await js("document.getElementById('toast').textContent"), await js('!!activeDeck()'));

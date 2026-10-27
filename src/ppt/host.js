@@ -251,8 +251,8 @@ function forget() { seen.w = null; seen.count = -1; }
 function go(n) { view().GotoSlide(n); return state(); }
 function next() { view().Next(); return state(); }
 function prev() { view().Previous(); return state(); }
-// 1 normal, 3 black, 4 white (pressing the same again goes back to the slide)
-function screen(s) { var v = view(); v.State = (v.State == s) ? 1 : s; return state(); }
+// 1 normal, 3 black, 4 white (pressing the same again goes back to the slide; exact: just that)
+function screen(s, exact) { var v = view(); v.State = exact ? s : (v.State == s) ? 1 : s; return state(); }
 // Paused (2) happens when the show loses the focus on some setups: carry on.
 function resume() { var v = view(); if (v.State == 2) v.State = 1; return state(); }
 function pointer(t) { view().PointerType = t; return state(); } // 1 arrow, 2 pen, 5 eraser… (ppSlideShowPointerType)

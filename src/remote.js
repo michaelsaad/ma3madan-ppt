@@ -20,6 +20,12 @@ LinkPage.onMessage = async m => {
     const data = await remoteThumb(m.id);
     if (data) LinkPage.send({ type: 'thumb', peer: m.peer, id: m.id, v: m.v, data });
   }
+  // A phone looks at a presentation that isn't on the screen (its sections, to pick where to start):
+  // just that phone gets it, and nothing changes here.
+  else if (m.type === 'deck' && knownDeck(m.path)) {
+    if (!(await openDeck(m.path, true))) return;
+    LinkPage.send({ type: 'deck', peer: m.peer, path: m.path, deck: phoneDeck(deckOf(m.path)) });
+  }
 };
 
 // ---------- a phone from "Nearby computers" asks to connect ----------
@@ -167,23 +173,40 @@ function pushRemote() {
   clearTimeout(remoteTimer);
   remoteTimer = setTimeout(() => LinkPage.send({ type: 'state', state: remoteState() }), 60);
 }
+// What the phone can do with this version (a phone app newer or older than this one adapts).
+const REMOTE_CAPS = ['program', 'preview', 'back', 'screen', 'resume'];
+const phoneDeck = d => ({
+  path: d.path, name: baseName(d.name), ratio: d.width / d.height, ready: d.ready, v: d.thumbs,
+  sections: sectionsOf(d).map(s => ({ name: s.name, first: s.first, count: s.count })),
+  slides: d.slides.map(s => ({ t: s.title, h: s.hidden ? 1 : 0 })),
+});
 function remoteState() {
   const live = show.running ? deckOf(show.path) : null;
   const d = live || activeDeck();
-  const item = p => ({ path: p, name: baseName(recentOf(p)?.name || p) });
+  // slide: where it was left (to continue from there).
+  const item = p => ({ path: p, name: baseName(recentOf(p)?.name || p), slide: recentOf(p)?.slide || 1 });
+  // A link just started another presentation and its slides aren't read yet: say it's live
+  // anyway (its name and slide count), never "not presenting" while the show runs.
+  const loading = show.running && !live && show.path ? {
+    path: show.path, name: baseName(show.path), ratio: 16 / 9, ready: 0, v: 'loading',
+    sections: [{ name: '', first: 1, count: show.count || 1 }],
+    slides: Array.from({ length: show.count || 1 }, () => ({ t: '', h: 0 })),
+  } : null;
   return {
     app: 'ppt', lang: LANG,
     open: open.map(x => ({ path: x.path, name: baseName(x.name), count: x.slides.length })),
-    active: d?.path || null,
-    deck: d ? {
-      path: d.path, name: baseName(d.name), ratio: d.width / d.height, ready: d.ready, v: d.thumbs,
-      sections: sectionsOf(d).map(s => ({ name: s.name, first: s.first, count: s.count })),
-      slides: d.slides.map(s => ({ t: s.title, h: s.hidden ? 1 : 0 })),
-    } : null,
+    active: loading ? loading.path : d?.path || null,
+    deck: loading || (d ? phoneDeck(d) : null),
     show: show.running ? { running: true, path: show.path, slide: show.slide, count: show.count, click: show.click, clicks: show.clicks, state: show.state } : { running: false },
     notes: live && show.slide ? live.slides[show.slide - 1]?.notes || '' : '',
-    recents: library.recents.slice(0, 25).map(r => item(r.path)),
+    recents: library.recents.slice(0, 60).map(r => item(r.path)),
     lists: library.lists.map(l => ({ name: l.name, items: l.items.map(item) })),
+    caps: REMOTE_CAPS,
+    program: library.program.map(item),
+    upNext: upNext(),
+    // Where the show is: a custom show's name, and the presentations a link came from.
+    named: show.running ? show.named || null : null,
+    chain: show.running ? (show.chain || []).map(c => ({ path: c.path, name: baseName(c.path), slide: c.slide })) : [],
     timer: timerStart ? { elapsed: (timerPausedAt || Date.now()) - timerStart - timerPaused, running: !timerPausedAt } : null,
   };
 }
@@ -194,30 +217,34 @@ async function remoteThumb(id) {
   return api.thumbData(rest.join('|'), Number(n), size === 'big' ? 1280 : 320);
 }
 
-// A phone may open only what's already here: the open presentations, the recent ones and the
-// lists. Never any other path it sends.
-const knownDeck = p => typeof p === 'string' && (open.some(x => same(x.path, p)) || library.recents.some(r => same(r.path, p)) || library.lists.some(l => l.items.some(x => same(x, p))));
+// A phone may open only what's already here: the program, the open presentations, the recent
+// ones and the lists. Never any other path it sends.
+const knownDeck = p => typeof p === 'string' && (library.program.some(x => same(x, p)) || open.some(x => same(x.path, p)) || library.recents.some(r => same(r.path, p)) || library.lists.some(l => l.items.some(x => same(x, p))));
 
-// The phone's buttons do what the same buttons here do.
+// The phone's buttons do what the same buttons here do. They never change what's looked at on
+// this computer: only the screen (the phone asks before replacing a show).
 async function remoteCommand(c) {
   if (c.path != null && !knownDeck(c.path)) return;
   if (window.MP_DEBUG) console.log("remote", JSON.stringify(c));
-  const d = activeDeck();
+  const startOn = async (p, n) => { if (await openDeck(p, true)) await startShow(Number.isInteger(n) && n > 0 ? n : 1, p, { ask: false, follow: false }); };
   switch (c.action) {
-    case 'next': case 'prev': case 'black': case 'white': case 'end': case 'first': case 'last':
+    case 'next': case 'prev': case 'black': case 'white': case 'end': case 'first': case 'last': case 'back':
       if (show.running) await api.showCmd({ action: c.action });
+      break;
+    case 'screen': // exactly this: 1 the slide, 3 black, 4 white
+      if (show.running && [1, 3, 4].includes(c.s)) await api.showCmd({ action: 'screen', s: c.s });
       break;
     case 'go':
       if (!Number.isInteger(c.n)) break;
       if (show.running && (!c.path || same(c.path, show.path))) await api.showCmd({ action: 'go', n: c.n });
-      else if (c.path) { if (await openDeck(c.path)) await startShow(c.n); }
+      else if (c.path) await startOn(c.path, c.n);
       break;
     case 'start':
-      if (c.path && !(await openDeck(c.path))) break;
-      if (activeDeck()) await startShow(Number.isInteger(c.n) ? c.n : 1);
+      if (c.path) await startOn(c.path, c.n);
+      else if (activeDeck()) await startShow(Number.isInteger(c.n) ? c.n : 1, active, { ask: false });
       break;
-    case 'open':
-      if (typeof c.path === 'string') await openDeck(c.path);
+    case 'open': // older phone apps: it joins the program
+      if (typeof c.path === 'string' && await openDeck(c.path, true)) addToProgram(c.path, true);
       break;
     case 'click': // a spot on the slide (0..1)
       if (show.running && c.sx >= 0 && c.sx <= 1 && c.sy >= 0 && c.sy <= 1) await api.showClick(c.sx, c.sy);

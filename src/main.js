@@ -91,8 +91,8 @@ function displaysInfo() {
 const sendDisplays = () => controlWin?.webContents.send('displays', displaysInfo());
 
 // ---------- library: recents and saved lists ----------
-// { recents: [{ path, name, opened, slide }], lists: [{ id, name, items: [path] }] }
-const library = Object.assign({ recents: [], lists: [] }, readJson(libraryFile(), {}));
+// { recents: [{ path, name, opened, slide }], lists: [{ id, name, items: [path] }], program: [path] }
+const library = Object.assign({ recents: [], lists: [], program: [] }, readJson(libraryFile(), {}));
 const saveLibrary = () => writeJson(libraryFile(), library);
 
 function touchRecent(file, name) {
@@ -182,8 +182,14 @@ let showRect = null; // the show window, in screen pixels
 let showCoversControls = false; // the show is full screen on the operator's own screen
 
 // What the page gets: the state plus the id to capture the show window for the live view.
-const publicShow = () => ({ ...show, sourceId: show.running && showHwnd ? `window:${showHwnd}:0` : null });
-function sendShow() { controlWin?.webContents.send('show-state', publicShow()); }
+// Also where the show is: inside a custom show (its name), and the presentations a link came from.
+const publicShow = () => ({
+  ...show, sourceId: show.running && showHwnd ? `window:${showHwnd}:0` : null,
+  named: show.running && named && same(named.path, show.path) ? named.name : null,
+  chain: show.running ? returnTo.map(r => ({ path: r.path, slide: r.slide })) : [],
+});
+let sentWhere = '';
+function sendShow() { const s = publicShow(); sentWhere = JSON.stringify([s.named, s.chain]); controlWin?.webContents.send('show-state', s); }
 
 let polling = false, pollAgain = false;
 function poll() {
@@ -215,12 +221,12 @@ async function pollOnce() {
   if ((!s.running || s.state === 5) && show.running && returnTo.length && !endingAll && !switching) {
     const back = returnTo.pop();
     show = s;
-    startShow(back.path, back.slide, { keepReturn: true })
+    startShow(back.path, back.slide, { keepReturn: true, cover: true })
       .then(() => back.named && ppt.namedShow(back.named.name, back.named.from, back.slide).then(() => { named = back.named; poll(); }))
       .catch(e => console.warn('return', e.message));
     return;
   }
-  if (!s.running && !switching) { returnTo.length = 0; endingAll = false; }
+  if (!s.running && !switching) { returnTo.length = 0; endingAll = false; named = null; }
   // A show started some other way (in PowerPoint itself): find its window for the live view.
   if (s.running && !showHwnd && !findingShow) {
     findingShow = true;
@@ -230,7 +236,7 @@ async function pollOnce() {
   if (changed) {
     if (s.running && s.path && s.slide) rememberSlide(s.path, s.slide);
     sendShow();
-  }
+  } else if (JSON.stringify([publicShow().named, publicShow().chain]) !== sentWhere) sendShow();
 }
 
 // Presentations to come back to: a link in the slides started another one's show.
@@ -241,9 +247,34 @@ let switching = 0; // a show is being started: its old one ending isn't the link
 let named = null; // inside a custom show: { path, from: the slide that opened it, name }
 const same = (a, b) => String(a || '').toLowerCase() === String(b || '').toLowerCase();
 
+// Going from one presentation to another, the screen is covered black for the moment between
+// them (else the audience sees the desktop, or PowerPoint's window, for a second).
 async function startShow(file, slide, opts = {}) {
   switching++;
-  try { return await startShowNow(file, slide, opts); } finally { switching--; }
+  const covering = show.running || opts.cover;
+  if (covering) cover(true);
+  try { return await startShowNow(file, slide, opts); } finally { switching--; if (covering) cover(false); }
+}
+let coverWin = null;
+function cover(on) {
+  if (!on) {
+    const w = coverWin; coverWin = null;
+    // A little after the new show is placed, so it's already drawn under the cover.
+    setTimeout(() => { if (w && !w.isDestroyed()) w.destroy(); }, 350);
+    return;
+  }
+  if (coverWin && !coverWin.isDestroyed()) return;
+  const target = showTarget();
+  if (!target.display || target.display.id === controlDisplay().id) return; // one screen: nothing to hide from
+  try {
+    coverWin = new BrowserWindow({
+      ...target.display.bounds, frame: false, show: false, backgroundColor: '#000000', skipTaskbar: true,
+      focusable: false, resizable: false, movable: false, minimizable: false, maximizable: false, fullscreenable: false, hasShadow: false,
+    });
+    coverWin.setAlwaysOnTop(true, 'screen-saver');
+    coverWin.setBounds(target.display.bounds);
+    coverWin.showInactive();
+  } catch (e) { console.warn('cover', e.message); coverWin = null; }
 }
 // A point inside the chosen screen, in real pixels: the window helper finds that screen's exact
 // rectangle itself (Electron's own numbers are scaled per screen).
@@ -308,6 +339,13 @@ async function showCommand(c) {
     case 'last': await ppt.go(show.count || 1); break;
     case 'black': await ppt.screen(3); break;
     case 'white': await ppt.screen(4); break;
+    // Exactly this screen (from the phone, whose idea of the screen may be a moment old).
+    case 'screen': if ([1, 3, 4].includes(c.s)) await ppt.screen(c.s, true); break;
+    // Back where the show came from: out of a custom show, or to the presentation a link left.
+    case 'back':
+      if (named && same(named.path, show.path)) { named = null; await ppt.jump('end'); }
+      else if (returnTo.length) { cover(true); await ppt.end(); setTimeout(() => cover(false), 4000); }
+      break;
     case 'end': endingAll = true; returnTo.length = 0; await ppt.end(); break;
   }
   await poll();
@@ -451,6 +489,7 @@ ipcMain.handle('library-load', () => library);
 ipcMain.on('library-save', (_e, lib) => {
   if (Array.isArray(lib?.recents)) library.recents = lib.recents;
   if (Array.isArray(lib?.lists)) library.lists = lib.lists;
+  if (Array.isArray(lib?.program)) library.program = lib.program.filter(p => typeof p === 'string');
   saveLibrary();
 });
 ipcMain.handle('pick-decks', async (_e, title) => {

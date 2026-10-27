@@ -226,10 +226,17 @@ function describe(file) {
     }
     return out;
   });
+  // Custom shows: their slides in their own order, so "next" inside one is right.
+  const indexOfTarget = {};
+  order.forEach((target, i) => { if (target) indexOfTarget[target] = i + 1; });
+  const customShows = [...walk(pres)].filter(e => local(e.name) === 'custShow' && e.attrs.name).map(e => ({
+    name: e.attrs.name,
+    slides: [...walk(e)].filter(s => local(s.name) === 'sld').map(s => indexOfTarget[presRels[s.attrs['r:id']]?.target]).filter(Boolean),
+  }));
   return {
     path: file, name: path.basename(file).replace(/\.[^.]+$/, ''),
     width: (Number(sz?.attrs.cx) || 12192000) / 12700, height: (Number(sz?.attrs.cy) || 6858000) / 12700,
-    slides, sections: sections.filter(s => s.count),
+    slides, sections: sections.filter(s => s.count), customShows,
   };
 }
 

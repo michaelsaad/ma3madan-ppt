@@ -99,31 +99,87 @@ header button, header .tab { -webkit-app-region: no-drag; }
 .update { background: var(--update-bg); border-color: var(--update-line); color: var(--update-text); padding: 5px 12px; }
 .update:hover { background: var(--update-hover); }
 
-/* open presentations, as tabs in the title bar */
-.tabs { display: flex; gap: 4px; margin-inline-start: 16px; min-width: 0; overflow: hidden; }
-.tab {
-  display: inline-flex; align-items: center; gap: 6px; max-width: 220px; min-width: 0;
-  padding: 6px 6px 6px 12px; border-radius: 8px; background: transparent; border: 1px solid transparent; color: var(--muted); cursor: pointer;
+/* "On screen": what the audience sees, always in the title bar while a show runs */
+.on-air { display: flex; align-items: center; gap: 6px; margin-inline-start: 16px; min-width: 0; -webkit-app-region: no-drag; }
+.on-air-main {
+  min-width: 0; max-width: 720px; justify-content: flex-start; gap: 8px; padding: 6px 12px;
+  background: var(--gold-soft); border-color: var(--gold); color: var(--text);
 }
-html[dir=rtl] .tab { padding: 6px 12px 6px 6px; }
-.tab:hover { background: var(--hover); }
-.tab.active { background: var(--panel-2); border-color: var(--line); color: var(--text); }
-.tab .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tab .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--gold); flex: none; }
-.tab .x { padding: 2px; border: 0; background: transparent; color: var(--muted); border-radius: 5px; }
-.tab .x svg { width: 14px; height: 14px; }
-.tab .x:hover { background: var(--hover-line); color: var(--text); }
+.on-air-main:hover { background: var(--gold-soft); border-color: var(--gold); filter: brightness(1.15); }
+.on-air .live-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--live); flex: none; box-shadow: 0 0 0 3px rgba(229, 72, 77, .25); }
+.on-air-label { font-size: 12px; font-weight: 700; color: var(--gold); text-transform: uppercase; letter-spacing: .04em; flex: none; }
+.crumb { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crumb .sep { color: var(--muted); margin: 0 6px; }
+.crumb .named { color: var(--gold); }
+.on-air-return { display: none; flex: none; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 6px; background: var(--gold); color: #1b1300; }
+body.previewing .on-air-return { display: inline-block; }
+.chain { padding: 5px 10px; font-size: 12.5px; max-width: 260px; }
+.chain span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chain svg { width: 16px; height: 16px; }
+.tag { font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--line); color: var(--muted); }
+.tag.live { background: var(--gold-soft); border-color: var(--gold); color: var(--gold); }
 
 /* ---------- layout ---------- */
-#layout { display: grid; grid-template-columns: var(--side-w, 300px) 1fr; min-height: 0; }
-body.side-hidden #layout { grid-template-columns: 0 1fr; }
-body.side-hidden #side { visibility: hidden; }
+#layout { display: grid; grid-template-columns: var(--side-w, 300px) minmax(0, 1fr) var(--sec-w, 280px); min-height: 0; }
+body.side-hidden #layout { grid-template-columns: 0 minmax(0, 1fr) var(--sec-w, 280px); }
+body.sec-hidden #layout { grid-template-columns: var(--side-w, 300px) minmax(0, 1fr) 0; }
+body.side-hidden.sec-hidden #layout { grid-template-columns: 0 minmax(0, 1fr) 0; }
+body.side-hidden #side, body.sec-hidden #secSide { visibility: hidden; }
+#sidebarBtn.on, #sectionsBtn.on { color: var(--accent); }
 #side {
   position: relative; display: flex; flex-direction: column; min-height: 0; min-width: 0;
   background: var(--panel); border-inline-end: 1px solid var(--line);
 }
 #sideGrip { position: absolute; top: 0; bottom: 0; inset-inline-end: -4px; width: 8px; cursor: col-resize; z-index: 5; }
 .side-top { padding: 12px; display: grid; gap: 10px; }
+
+/* Sections, on the other side */
+#secSide {
+  position: relative; display: flex; flex-direction: column; min-height: 0; min-width: 0;
+  background: var(--panel); border-inline-start: 1px solid var(--line);
+}
+#secGrip { position: absolute; top: 0; bottom: 0; inset-inline-start: -4px; width: 8px; cursor: col-resize; z-index: 5; }
+.sec-side-top { display: flex; align-items: center; gap: 8px; padding: 14px 14px 2px; }
+.sec-side-top b { font-size: 15px; }
+.sec-side-deck { padding: 0 14px 8px; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.srow { border-radius: 8px; }
+.srow + .srow { margin-top: 2px; }
+.srow-head { display: flex; align-items: center; gap: 4px; padding: 2px; border-radius: 8px; border: 1px solid transparent; }
+.srow-head:hover { background: var(--hover); }
+.srow .caret-btn { padding: 6px 4px; border: 0; background: transparent; color: var(--muted); }
+.srow .caret-btn svg { width: 16px; height: 16px; transition: transform .15s; }
+.srow:not(.open) .caret-btn svg { transform: rotate(-90deg); }
+html[dir=rtl] .srow:not(.open) .caret-btn svg { transform: rotate(90deg); }
+.srow .go { flex: 1; min-width: 0; justify-content: space-between; padding: 7px 8px; border: 0; background: transparent; text-align: start; }
+.srow .go b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.srow .go .count { color: var(--muted); font-size: 12px; flex: none; }
+.srow.current > .srow-head { background: var(--gold-soft); border-color: var(--gold); }
+.srow.current > .srow-head b { color: var(--gold); }
+.srow.picked > .srow-head { background: var(--selected); border-color: var(--selected-line); }
+.srow-slides { display: none; padding: 2px 0 6px; padding-inline-start: 22px; }
+.srow.open .srow-slides { display: grid; gap: 2px; }
+.sslide { display: grid; grid-template-columns: 56px 1fr; gap: 8px; align-items: center; padding: 4px 6px; border-radius: 6px; cursor: pointer; }
+.sslide:hover { background: var(--hover); }
+.sslide .pic { position: relative; width: 56px; aspect-ratio: var(--ratio, 16/9); border-radius: 4px; background: var(--slide-bg) center/contain no-repeat; border: 1px solid var(--line); }
+.sslide .pic .no { position: absolute; inset-inline-start: 2px; top: 2px; font-size: 10px; background: rgba(0,0,0,.65); color: #fff; border-radius: 4px; padding: 0 4px; }
+.sslide .t { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sslide.current { background: var(--gold-soft); }
+.sslide.current .t { color: var(--gold); }
+.sslide.current .pic { border-color: var(--gold); }
+.sslide.picked { background: var(--selected); }
+.sslide.hidden-slide .pic { opacity: .45; }
+.sec-empty { padding: 12px 14px; color: var(--muted); font-size: 13px; }
+
+/* The program: tonight's presentations, in order */
+.group.program .group-head { color: var(--text); }
+.item .badge { font-size: 10.5px; font-weight: 700; padding: 0 6px; border-radius: 999px; margin-inline-start: 6px; vertical-align: 1px; }
+.item .badge.next { background: var(--selected); color: var(--accent); }
+.item .order { font-size: 12px; color: var(--muted); min-width: 14px; text-align: center; }
+.item.prog { grid-template-columns: 14px 64px 1fr auto; }
+.item.live-row { background: var(--gold-soft); border-color: var(--gold); }
+.item .add { padding: 4px; opacity: 0; }
+.item:hover .add { opacity: 1; }
+.item.drop-before { box-shadow: 0 -2px 0 var(--accent); }
 .search { display: flex; align-items: center; gap: 8px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 0 10px; color: var(--muted); }
 .search svg { width: 16px; height: 16px; }
 .search input { border: 0; background: transparent; padding: 7px 0; width: 100%; outline: none; }
@@ -188,8 +244,7 @@ html[dir=rtl] .group.collapsed .group-head .caret { transform: rotate(90deg); }
 html[dir=rtl] .sec.collapsed .sec-head .caret { transform: rotate(90deg); }
 .sec-head b { font-size: 15px; }
 .sec-head .count { color: var(--muted); font-size: 12px; }
-.sec-head .sec-play { margin-inline-start: auto; opacity: 0; padding: 4px 10px; font-size: 12px; }
-.sec-head:hover .sec-play { opacity: 1; }
+.sec-head .sec-play { margin-inline-start: auto; padding: 4px 10px; font-size: 12px; }
 .sec.current-sec .sec-head b { color: var(--gold); }
 .sec.collapsed .slides { display: none; }
 .slides { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--thumb, 220px), 1fr)); gap: 14px; padding: 12px 4px; }
@@ -214,7 +269,7 @@ html[dir=rtl] .sec.collapsed .sec-head .caret { transform: rotate(90deg); }
 .timer b { font: 600 22px/1 "Segoe UI", sans-serif; font-variant-numeric: tabular-nums; min-width: 72px; direction: ltr; }
 .timer.paused b { color: var(--muted); }
 .clock { font-size: 18px; color: var(--muted); font-variant-numeric: tabular-nums; direction: ltr; }
-.pv-deck { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40%; }
+button.armed { background: var(--live); border-color: var(--live); color: #fff; }
 .pv-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 32%); gap: 16px; padding: 14px 16px; min-height: 0; }
 .pv-main { display: grid; grid-template-rows: minmax(0, 1fr) auto auto; gap: 10px; min-height: 0; min-width: 0; }
 .slide-box { position: relative; background: var(--slide-bg); border-radius: 8px; overflow: hidden; min-height: 0; }
@@ -338,3 +393,10 @@ body.dragging .drop-zone { display: grid; }
 .r-devices li span[data-rename] { cursor: text; border-bottom: 1px dashed transparent; }
 .r-devices li span[data-rename]:hover { border-bottom-color: currentColor; }
 .r-devices .dev-rename { flex: 1; min-width: 0; font: inherit; padding: 2px 6px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: inherit; }
+
+/* side panel rows: their buttons; a red "yes" for questions that end something */
+.item .acts { display: inline-flex; align-items: center; }
+button.danger-fill { background: var(--live); border-color: var(--live); color: #fff; }
+button.danger-fill:hover { filter: brightness(1.1); background: var(--live); }
+/* The two panels swap sides in Arabic: so do their buttons' pictures. */
+html[dir=rtl] #sidebarBtn svg, html[dir=rtl] #sectionsBtn svg { transform: scaleX(-1); }
