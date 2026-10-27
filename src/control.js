@@ -364,6 +364,7 @@ async function openFiles(paths) {
 
 // ---------- "On screen": what the audience sees, from anywhere in the window ----------
 function renderOnAir() {
+  $('blackPill').hidden = !(show.black || (show.running && show.state === 3));
   const on = show.running;
   $('onAir').hidden = !on;
   document.body.classList.toggle('previewing', on && !same(active, show.path));
@@ -374,7 +375,7 @@ function renderOnAir() {
   const sec = d && show.slide && d.sections.length ? sectionOfSlide(d, show.slide) : null;
   if (sec?.name) parts.push(esc(sec.name));
   parts.push(esc(show.slide ? t('slideOf', { n: show.slide, c: show.count || d?.slides.length || '' }) : t('endScreen')));
-  if (show.state === 3 || show.state === 4) parts.push(`<span class="named">${esc(show.state === 4 ? t('whiteOn') : t('blackOn'))}</span>`);
+  if (show.state === 4) parts.push(`<span class="named">${esc(show.state === 4 ? t('whiteOn') : t('blackOn'))}</span>`);
   $('crumb').innerHTML = parts.join('<span class="sep">›</span>');
   // The way back: out of a custom show, or to the presentation a link came from.
   const back = show.named ? t('leaveNamed', { name: show.named }) : show.chain?.length ? t('backTo', { name: baseName(show.chain[show.chain.length - 1].path) }) : '';
@@ -600,10 +601,13 @@ function renderPresenter() {
   $('slideCount').textContent = `/ ${count}`;
   // Black / white screen
   const badge = $('screenBadge');
-  badge.hidden = !(show.state === 3 || show.state === 4);
-  badge.className = 'screen-badge' + (show.state === 4 ? ' white' : '');
-  badge.textContent = show.state === 4 ? t('whiteOn') : t('blackOn');
-  $('blackBtn').classList.toggle('on', show.state === 3);
+  const black = show.black || show.state === 3;
+  badge.hidden = !(black || show.state === 4);
+  badge.className = 'screen-badge' + (show.state === 4 ? ' white' : ' black');
+  badge.textContent = show.state === 4 ? t('whiteOn') : t('blackHeldLong');
+  $('blackBtn').classList.toggle('on', black);
+  // While black, the slide's own picture here (the projector's live picture would be black too).
+  $('current').classList.toggle('show-img', black);
   $('whiteBtn').classList.toggle('on', show.state === 4);
   // Next: another animation step on this slide, or the next slide of the show.
   const stepsLeft = (show.clicks || 0) - (show.click || 0);
@@ -766,6 +770,7 @@ const cmd = action => api.showCmd({ action });
 $('nextBtn').onclick = () => cmd('next');
 $('prevBtn').onclick = () => cmd('prev');
 $('blackBtn').onclick = () => cmd('black');
+$('blackPill').onclick = () => cmd('black');
 $('whiteBtn').onclick = () => cmd('white');
 $('endBtn').onclick = () => endShowSafely(false);
 $('gridBtn').onclick = () => (pvGridOpen ? closePvGrid() : openPvGrid());
@@ -816,6 +821,8 @@ addEventListener('keydown', e => {
   }
   if (k === '?' ) { showKeys(); return; }
   if (k === 'F5') { e.preventDefault(); if (d && !live) startShow(e.shiftKey ? selected : 1); return; }
+  // Black, on or off: any time (to get the next presentation ready behind it).
+  if ((k === 'b' || k === 'B' || k === '.') && !e.ctrlKey) { cmd('black'); return; }
   // While a show runs, the keys drive it, whatever is looked at here.
   if (!show.running) {
     if (!d) return;

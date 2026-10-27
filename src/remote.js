@@ -174,7 +174,7 @@ function pushRemote() {
   remoteTimer = setTimeout(() => LinkPage.send({ type: 'state', state: remoteState() }), 60);
 }
 // What the phone can do with this version (a phone app newer or older than this one adapts).
-const REMOTE_CAPS = ['program', 'preview', 'back', 'screen', 'resume'];
+const REMOTE_CAPS = ['program', 'preview', 'back', 'screen', 'resume', 'blackHold'];
 const phoneDeck = d => ({
   path: d.path, name: baseName(d.name), ratio: d.width / d.height, ready: d.ready, v: d.thumbs,
   sections: sectionsOf(d).map(s => ({ name: s.name, first: s.first, count: s.count })),
@@ -204,6 +204,7 @@ function remoteState() {
     caps: REMOTE_CAPS,
     program: library.program.map(item),
     upNext: upNext(),
+    black: !!show.black, // held black: on until turned off by hand, even with no show
     // Where the show is: a custom show's name, and the presentations a link came from.
     named: show.running ? show.named || null : null,
     chain: show.running ? (show.chain || []).map(c => ({ path: c.path, name: baseName(c.path), slide: c.slide })) : [],
@@ -228,11 +229,12 @@ async function remoteCommand(c) {
   if (window.MP_DEBUG) console.log("remote", JSON.stringify(c));
   const startOn = async (p, n) => { if (await openDeck(p, true)) await startShow(Number.isInteger(n) && n > 0 ? n : 1, p, { ask: false, follow: false }); };
   switch (c.action) {
-    case 'next': case 'prev': case 'black': case 'white': case 'end': case 'first': case 'last': case 'back':
+    case 'black': await api.showCmd({ action: 'black' }); break; // any time, held
+    case 'next': case 'prev': case 'white': case 'end': case 'first': case 'last': case 'back':
       if (show.running) await api.showCmd({ action: c.action });
       break;
     case 'screen': // exactly this: 1 the slide, 3 black, 4 white
-      if (show.running && [1, 3, 4].includes(c.s)) await api.showCmd({ action: 'screen', s: c.s });
+      if ([1, 3].includes(c.s) || (show.running && c.s === 4)) await api.showCmd({ action: 'screen', s: c.s });
       break;
     case 'go':
       if (!Number.isInteger(c.n)) break;

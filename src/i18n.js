@@ -162,6 +162,8 @@ const STRINGS = {
     sections: 'Sections', tSectionsBar: 'Show or hide the sections (Ctrl+Shift+B)', kSections: 'Sections panel',
     liveTag: 'On screen', previewTag: 'Only looking', noDeckSections: 'Pick a presentation to see its sections.', tOpenSection: 'Show its slides',
     resumeAt: 'Continue from slide {n}',
+    blackHeld: 'Black on the screen', blackOff: 'Turn off', blackHeldLong: 'The audience sees black (B to turn it off)',
+    tBlackHold: 'The audience sees black until you turn it off: move through the slides or get another presentation ready meanwhile.',
     endAgainBtn: 'Press again to end', endAgain: 'Press “End show” again to end it', escAgain: 'Press Esc again to end the show',
   },
   ar: {
@@ -325,6 +327,8 @@ const STRINGS = {
     sections: 'الأقسام', tSectionsBar: 'إظهار أو إخفاء الأقسام (Ctrl+Shift+B)', kSections: 'لوحة الأقسام',
     liveTag: 'على الشاشة', previewTag: 'معاينة فقط', noDeckSections: 'اختر عرضًا لترى أقسامه.', tOpenSection: 'إظهار شرائحه',
     resumeAt: 'أكمل من شريحة {n}',
+    blackHeld: 'الشاشة سوداء', blackOff: 'إلغاء', blackHeldLong: 'الحضور يرون شاشة سوداء (B للإلغاء)',
+    tBlackHold: 'الحضور يرون شاشة سوداء حتى تلغيها: تنقّل بين الشرائح أو جهّز عرضًا آخر في الأثناء.',
     endAgainBtn: 'اضغط مرة أخرى للإنهاء', endAgain: 'اضغط «إنهاء العرض» مرة أخرى لإنهائه', escAgain: 'اضغط Esc مرة أخرى لإنهاء العرض',
   },
 };

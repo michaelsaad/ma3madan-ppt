@@ -113,6 +113,11 @@ header button, header .tab { -webkit-app-region: no-drag; }
 .crumb .named { color: var(--gold); }
 .on-air-return { display: none; flex: none; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 6px; background: var(--gold); color: #1b1300; }
 body.previewing .on-air-return { display: inline-block; }
+.black-pill { -webkit-app-region: no-drag; gap: 8px; padding: 5px 6px 5px 12px; background: #000; border-color: var(--live); color: #fff; font-size: 13px; }
+html[dir=rtl] .black-pill { padding: 5px 12px 5px 6px; }
+.black-pill:hover { background: #000; border-color: var(--live); }
+.black-pill .sq { width: 12px; height: 12px; border-radius: 3px; background: #000; box-shadow: 0 0 0 2px #fff; }
+.black-pill b { padding: 2px 10px; border-radius: 6px; background: var(--live); color: #fff; }
 .chain { padding: 5px 10px; font-size: 12.5px; max-width: 260px; }
 .chain span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chain svg { width: 16px; height: 16px; }
@@ -277,8 +282,12 @@ button.armed { background: var(--live); border-color: var(--live); color: #fff; 
 .slide-box video, .slide-box img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; }
 .slide-box img[src=""], .slide-box img:not([src]) { display: none; }
 .slide-box.has-live img#currentImg { display: none; }
+.slide-box.current.show-img video { display: none; }
+.slide-box.current.show-img img#currentImg[src]:not([src=""]) { display: block; }
 .screen-badge { position: absolute; inset: 0; display: grid; place-content: center; font-size: 20px; font-weight: 600; color: #fff; background: rgba(0,0,0,.6); pointer-events: none; }
 .screen-badge.white { background: rgba(255,255,255,.75); color: #111; }
+/* Black: the slide stays visible here (to get the next one ready), with a band saying so. */
+.screen-badge.black { inset: 0 0 auto 0; padding: 8px; font-size: 15px; background: rgba(0,0,0,.85); border-bottom: 2px solid var(--live); }
 .pv-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .pv-controls .big { padding: 10px 18px; }
 .pv-controls .big svg { width: 24px; height: 24px; }

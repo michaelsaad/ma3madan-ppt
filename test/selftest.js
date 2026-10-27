@@ -118,8 +118,13 @@ module.exports = async function selftest(win, { app, ppt }) {
     await until('show.state === 3');
     await wait(300);
     await shot('6-black');
+    // Black is held: moving on keeps it black, until it's turned off.
+    await js('api.showCmd({ action: "go", n: 2 })');
+    await until('show.slide === 2');
+    await until('show.state === 3 && show.black', 4000);
+    log('black held while moving');
     await js('cmd("black")');
-    await until('show.state === 1');
+    await until('show.state === 1 && !show.black');
 
     await js('cmd("end")');
     await until('!show.running');

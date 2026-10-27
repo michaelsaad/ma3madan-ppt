@@ -48,6 +48,7 @@ const S = {
     notes: 'Notes', noNotes: 'No notes on this slide', sections: 'Sections', slides: '{n} slides', oneSlide: '1 slide',
     presentations: 'Presentations', nextSlide: 'Next', openNow: 'Open', untitled: 'Untitled section', tapHint: 'Tap the slide to click on it',
     animStep: 'Animation {a} of {b}', endOfShow: 'End of the show',
+    blackOffBtn: 'Turn off black', blackBand: 'The audience sees black: move on and get ready, then turn it off.',
     partShow: 'Show', program: 'Program', programEmpty: 'Add presentations to the program on the computer (+ in Recent).',
     reconnecting: 'Connection lost: reconnecting…', notSent: 'Not sent: not connected',
     clickMode: 'Click on slide', clickHint: 'Swipe the slide to move. Turn on “Click on slide” to press links or videos on it.', clickOnHint: 'A tap on the slide clicks it on the projector.',
@@ -97,6 +98,7 @@ const S = {
     notes: 'الملاحظات', noNotes: 'لا توجد ملاحظات لهذه الشريحة', sections: 'الأقسام', slides: '{n} شريحة', oneSlide: 'شريحة واحدة',
     presentations: 'العروض', nextSlide: 'التالي', openNow: 'فتح', untitled: 'قسم بدون اسم', tapHint: 'المس الشريحة لتضغط عليها في البروجكتور',
     animStep: 'حركة {a} من {b}', endOfShow: 'نهاية العرض',
+    blackOffBtn: 'إلغاء الأسود', blackBand: 'الحضور يرون شاشة سوداء: تنقّل وجهّز، ثم ألغِ الأسود.',
     partShow: 'العرض', program: 'البرنامج', programEmpty: 'أضف العروض إلى البرنامج من الكمبيوتر (زر + في «الأخيرة»).',
     reconnecting: 'انقطع الاتصال: جارٍ إعادة الاتصال…', notSent: 'لم يُرسل: غير متصل',
     clickMode: 'الضغط على الشريحة', clickHint: 'اسحب الشريحة للتنقل. فعّل «الضغط على الشريحة» لتضغط على الروابط أو الفيديوهات فيها.', clickOnHint: 'الضغط على الشريحة يضغط عليها في البروجكتور.',
@@ -729,7 +731,7 @@ function renderParts() {
   if (on) nav.querySelector('[data-tab="play"]').classList.remove('on');
   for (const el of document.querySelectorAll('.ppart')) el.hidden = el.dataset.part !== pPart;
   $('pStage').hidden = pPart !== 'show';
-  $('pMini').hidden = pPart === 'show' || !showOf();
+  $('pMini').hidden = pPart === 'show' || !(showOf() || pst.black);
 }
 for (const b of document.querySelectorAll('.tabs .part')) b.onclick = () => setPart(b.dataset.part);
 $('pMiniWhere').onclick = () => setPart('show');
@@ -778,15 +780,19 @@ function renderPpt() {
   const s = showOf(), d = pst.deck;
   // The slide on the projector (or, before the show, the presentation on the computer's screen).
   const live = s && d && d.path === s.path;
+  // Black, held on the computer: the audience sees black until it's turned off here or there,
+  // while this phone still shows the slides (to move on and get the next one ready).
+  const black = !!pst.black || (!!live && s.state === 3);
   $('pDeck').textContent = d ? d.name : t('notPresenting');
   const st2 = $('pStatus');
-  st2.className = 'status' + (live ? (s.state === 3 || s.state === 4 ? ' standby' : ' live') : '');
-  st2.textContent = live ? (s.state === 3 ? t('blackOn') : s.state === 4 ? t('whiteOn') : t('presenting')) : t('notPresenting');
+  st2.className = 'status' + (black || (live && s.state === 4) ? ' standby' : live ? ' live' : '');
+  st2.textContent = black ? t('blackOn') : live ? (s.state === 4 ? t('whiteOn') : t('presenting')) : t('notPresenting');
+  $('pBlackBand').hidden = !black;
   const n = live ? s.slide : 1;
   const box = $('pSlide');
   if (d) box.style.setProperty('--r', String(d.ratio));
   box.classList.toggle('live', !!live);
-  box.classList.toggle('dark', !!live && s.state === 3);
+  box.classList.toggle('dark', !!live && s.state === 3 && !caps('blackHold'));
   box.classList.toggle('light', !!live && s.state === 4);
   const img = $('pSlideImg');
   if (d && n) {
@@ -812,10 +818,14 @@ function renderPpt() {
   // Buttons
   $('pPlayRow').hidden = !live;
   $('pStartRow').hidden = !!live || !d;
-  $('pBlackBtn').classList.toggle('on', !!live && s.state === 3);
+  $('pBlackBtn').classList.toggle('on', black);
+  $('pBlackBtn').querySelector('span').textContent = black ? t('blackOffBtn') : t('black');
   $('pWhiteBtn').classList.toggle('on', !!live && s.state === 4);
-  $('pFullBlack').classList.toggle('on', !!live && s.state === 3);
-  $('pControls').hidden = !live;
+  $('pFullBlack').classList.toggle('on', black);
+  // Black works with no show too (newer computer versions); white and end only during one.
+  $('pControls').hidden = !live && !caps('blackHold');
+  $('pWhiteBtn').hidden = !live;
+  $('pEndBtn').hidden = !live;
   // Notes
   $('pNotesBox').hidden = !live;
   $('pNotes').textContent = pst.notes || t('noNotes');
@@ -1060,8 +1070,10 @@ document.addEventListener('click', e => {
   if (b) psend({ action: b.dataset.p });
   // Black and white: exactly that screen (or back to the slide when it's on already).
   const sc = e.target.closest('#p-remoteUi [data-screen]');
-  if (sc && showOf()) {
-    const want = Number(sc.dataset.screen), now = showOf().state;
+  const want = sc && Number(sc.dataset.screen);
+  if (sc && want === 3 && caps('blackHold')) psend({ action: 'screen', s: pst.black || showOf()?.state === 3 ? 1 : 3 });
+  else if (sc && showOf()) {
+    const now = showOf().state;
     psend(caps('screen') ? { action: 'screen', s: now === want ? 1 : want } : { action: want === 3 ? 'black' : 'white' });
   }
 });

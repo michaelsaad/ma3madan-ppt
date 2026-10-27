@@ -187,9 +187,10 @@ const publicShow = () => ({
   ...show, sourceId: show.running && showHwnd ? `window:${showHwnd}:0` : null,
   named: show.running && named && same(named.path, show.path) ? named.name : null,
   chain: show.running ? returnTo.map(r => ({ path: r.path, slide: r.slide })) : [],
+  black: blackHold,
 });
 let sentWhere = '';
-function sendShow() { const s = publicShow(); sentWhere = JSON.stringify([s.named, s.chain]); controlWin?.webContents.send('show-state', s); }
+function sendShow() { const s = publicShow(); sentWhere = JSON.stringify([s.named, s.chain, s.black]); controlWin?.webContents.send('show-state', s); }
 
 let polling = false, pollAgain = false;
 function poll() {
@@ -236,7 +237,9 @@ async function pollOnce() {
   if (changed) {
     if (s.running && s.path && s.slide) rememberSlide(s.path, s.slide);
     sendShow();
-  } else if (JSON.stringify([publicShow().named, publicShow().chain]) !== sentWhere) sendShow();
+  } else if (JSON.stringify([publicShow().named, publicShow().chain, blackHold]) !== sentWhere) sendShow();
+  // Held black with one screen (no cover window): PowerPoint's own black, again after every move.
+  if (blackHold && !coverWin && s.running && s.state !== 3 && s.state !== 5) ppt.screen(3, true).catch(() => {});
 }
 
 // Presentations to come back to: a link in the slides started another one's show.
@@ -258,6 +261,7 @@ async function startShow(file, slide, opts = {}) {
 let coverWin = null;
 function cover(on) {
   if (!on) {
+    if (blackHold) return; // held black stays until it's turned off
     const w = coverWin; coverWin = null;
     // A little after the new show is placed, so it's already drawn under the cover.
     setTimeout(() => { if (w && !w.isDestroyed()) w.destroy(); }, 350);
@@ -275,6 +279,25 @@ function cover(on) {
     coverWin.setBounds(target.display.bounds);
     coverWin.showInactive();
   } catch (e) { console.warn('cover', e.message); coverWin = null; }
+}
+// PowerPoint puts its show on top when it's placed: the cover goes back over it.
+function raiseCover() { if (coverWin && !coverWin.isDestroyed()) { coverWin.setAlwaysOnTop(true, 'screen-saver'); coverWin.moveTop(); } }
+
+// Black held: the audience sees black until it's turned off by hand, whatever happens meanwhile:
+// moving through the slides, getting another presentation ready and showing it, the show ending.
+// The slides still show here and on the phone. On a second screen it's a black window over the
+// projector; with one screen, PowerPoint's own black (put back after every move).
+let blackHold = false;
+async function setBlack(on) {
+  blackHold = !!on;
+  if (on) {
+    cover(true);
+    if (!coverWin && show.running) await ppt.screen(3, true).catch(() => {});
+  } else {
+    cover(false);
+    if (show.running && show.state === 3) await ppt.screen(1, true).catch(() => {});
+  }
+  sendShow();
 }
 // A point inside the chosen screen, in real pixels: the window helper finds that screen's exact
 // rectangle itself (Electron's own numbers are scaled per screen).
@@ -294,7 +317,7 @@ async function placeShow(target) {
 // a "DPI changed"): look again twice, and put it back if it moved.
 function recheckPlacement(target) {
   for (const t of placeTimers) clearTimeout(t);
-  placeTimers = [600, 1800].map(ms => setTimeout(() => { if (show.running) placeShow(target).catch(() => {}); }, ms));
+  placeTimers = [600, 1800].map(ms => setTimeout(() => { if (show.running) placeShow(target).then(raiseCover).catch(() => {}); }, ms));
 }
 
 async function startShowNow(file, slide, opts) {
@@ -318,6 +341,7 @@ async function startShowNow(file, slide, opts) {
     showRect = found.rect;
     // PowerPoint was told the screen; make sure it fills it exactly (else Windows keeps the taskbar).
     await placeShow(target);
+    raiseCover();
     recheckPlacement(target);
   } catch (e) { console.warn('show window', e.message); }
   // Keys stay with the operator's window (unless the show covers it: one screen only).
@@ -330,17 +354,24 @@ async function startShowNow(file, slide, opts) {
 async function showCommand(c) {
   const t0 = Date.now();
   if (process.env.MP_SELFTEST) console.log('[cmd]', c.action, 'running', show.running);
-  if (!show.running) return show;
+  // Black is held (on or off by hand only), even with no show running.
+  if (c.action === 'black' || (c.action === 'screen' && (c.s === 3 || c.s === 1))) {
+    const on = c.action === 'black' ? !(blackHold || show.state === 3) : c.s === 3;
+    await setBlack(on);
+    if (!on && show.running && show.state === 4) await ppt.screen(1, true);
+    if (show.running) await poll();
+    return publicShow();
+  }
+  if (!show.running) return publicShow();
   switch (c.action) {
     case 'next': await ppt.next(); break;
     case 'prev': await ppt.prev(); break;
     case 'go': await ppt.go(c.n); break;
     case 'first': await ppt.go(1); break;
     case 'last': await ppt.go(show.count || 1); break;
-    case 'black': await ppt.screen(3); break;
-    case 'white': await ppt.screen(4); break;
+    case 'white': if (blackHold) await setBlack(false); await ppt.screen(4); break;
     // Exactly this screen (from the phone, whose idea of the screen may be a moment old).
-    case 'screen': if ([1, 3, 4].includes(c.s)) await ppt.screen(c.s, true); break;
+    case 'screen': if (c.s === 4) { if (blackHold) await setBlack(false); await ppt.screen(4, true); } break;
     // Back where the show came from: out of a custom show, or to the presentation a link left.
     case 'back':
       if (named && same(named.path, show.path)) { named = null; await ppt.jump('end'); }

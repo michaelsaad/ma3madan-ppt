@@ -242,6 +242,8 @@
   .pslide-main img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
   .pslide-main img:not([src]) { display: none; }
   .pslide-main.dark img { opacity: .15; }
+  .pblack-band { position: absolute; inset: 0 0 auto 0; z-index: 2; padding: 8px 12px; background: rgba(0,0,0,.85); border-bottom: 2px solid var(--live); color: #fff; font-size: 13px; font-weight: 600; text-align: center; }
+  .pctl button[hidden] { display: none; }
   .pslide-main.light img { opacity: .35; }
   .pslide-main .tap { position: absolute; width: 36px; height: 36px; margin: -18px 0 0 -18px; border-radius: 50%; border: 2px solid var(--gold); animation: tap .6s ease-out forwards; pointer-events: none; }
   @keyframes tap { from { transform: scale(.3); opacity: 1; } to { transform: scale(1.4); opacity: 0; } }
@@ -629,7 +631,7 @@
       <button data-p="next" class="pmini-btn" aria-label="Next"><svg><use href="#i-right"/></svg></button>
     </div>
     <div id="pStage" class="pstage">
-      <div id="pSlide" class="pslide-main"><img id="pSlideImg" alt=""><p id="pEmpty" class="pempty" data-s="noDeck"></p>
+      <div id="pSlide" class="pslide-main"><img id="pSlideImg" alt=""><div id="pBlackBand" class="pblack-band" data-s="blackBand" hidden></div><p id="pEmpty" class="pempty" data-s="noDeck"></p>
 </div>
       <!-- Full screen: every control in one column on the right edge, under the right thumb -->
       <div id="pFullBar" class="pfull-bar">
