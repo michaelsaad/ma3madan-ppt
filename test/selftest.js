@@ -58,7 +58,19 @@ module.exports = async function selftest(win, { app, ppt }) {
     await shot('4-animation-step');
     log('next / animation step ok');
     // The phone's picture of the projector, with the animation as far as it has gone.
-    if (await js('document.getElementById("current").classList.contains("has-live")')) assert.ok((await js('liveShot()') || '').startsWith('data:image/jpeg'));
+    if (await js('document.getElementById("current").classList.contains("has-live")')) {
+      assert.ok((await js('liveShot()') || '').startsWith('data:image/jpeg'));
+      assert.strictEqual((await js('projectorSignature()') || '').length, 32 * 18); // tells when the projector changes
+    }
+    // With a phone connected, a picture goes out when the projector changes (here: a step back).
+    if (await js('document.getElementById("current").classList.contains("has-live")')) {
+      await js(`window.__send = LinkPage.send; window.__shots = []; LinkPage.send = m => { if (m.type === 'thumb') __shots.push(m.id); };
+        remoteOn = true; link = { ...link, phones: [{ peer: 'test' }] }; scheduleLiveShots();`);
+      await js('cmd("prev")');
+      await until('__shots.length > 0', 4000);
+      log('projector pictures for the phone:', await js('__shots.join(", ")'));
+      await js('LinkPage.send = __send; remoteOn = false; link = { ...link, phones: [] }; scheduleLiveShots();');
+    }
 
     await js('openPvGrid()');
     await wait(300);

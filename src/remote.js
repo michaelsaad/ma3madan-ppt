@@ -8,12 +8,14 @@ let remoteOn = false;
 let link = { on: false };
 let lanOpen = false;
 let lanNet = 0; // which network's code the Wi-Fi page shows
+// The projector's picture for the phones (see scheduleLiveShots).
+let shotLoop = null, shotKey = '', shotSig = '', shotDirty = false, shotSentAt = 0;
 
 function renderRemoteBtn() {
   $('remoteBtn').classList.toggle('on', remoteOn);
   $('remoteBtn').classList.toggle('linked', remoteOn && ((link.phones?.length || 0) + (link.wifiPages || 0)) > 0);
 }
-LinkPage.onStatus = s => { link = s; renderRemoteBtn(); renderRemoteModal(); };
+LinkPage.onStatus = s => { link = s; renderRemoteBtn(); renderRemoteModal(); shotSig = ''; scheduleLiveShots(); }; // a phone joined: it gets the projector's picture too
 LinkPage.onMessage = async m => {
   if (m.type === 'cmd' && m.cmd && typeof m.cmd.action === 'string') remoteCommand(m.cmd);
   else if (m.type === 'thumb' && typeof m.id === 'string') {
@@ -176,37 +178,61 @@ function pushRemote() {
 }
 
 // What the audience sees, as a picture for the phones: the slide with its animations as far as
-// they've gone (the slide pictures show the finished slide). Taken from the live view of the show a
-// moment after each step, and again once a longer animation has played. Not while it's black or
-// white: the phone shows the slide then, with a band.
-let shotKey = '', shotTimers = [];
+// they've gone (the slide pictures show the finished slide). The live view of the show is looked
+// at a few times a second; whenever the projector's picture changed (a step, an animation that
+// plays on by itself or after the previous one, a shape flying in for two seconds), the phone
+// gets the new picture — at most one every 0.6 s, and the last one once it has settled. Not while
+// it's black or white: the phone shows the slide then, with a band.
 function scheduleLiveShots() {
-  if (!show.running) { shotKey = ''; return; }
-  if (!((link.phones?.length || 0) + (link.wifiPages || 0))) return; // no phone to send it to
-  const key = [show.path, show.slide, show.click || 0, show.state].join('|');
-  if (key === shotKey) return;
-  shotKey = key;
-  for (const tm of shotTimers) clearTimeout(tm);
-  if (show.state === 3 || show.state === 4) return;
-  shotTimers = [450, 1400].map(ms => setTimeout(() => {
-    if (key !== shotKey) return;
-    const data = liveShot();
-    if (data) LinkPage.send({ type: 'thumb', id: `live|${show.slide}|${show.click || 0}|${show.path}`, v: Date.now(), data });
-  }, ms));
+  const phones = (link.phones?.length || 0) + (link.wifiPages || 0);
+  if (!show.running || !phones) { clearInterval(shotLoop); shotLoop = null; shotKey = ''; return; }
+  // A new step: the next picture goes out at once.
+  const key = [show.path, show.slide, show.click || 0].join('|');
+  if (key !== shotKey) { shotKey = key; shotSig = ''; shotSentAt = 0; }
+  if (!shotLoop) shotLoop = setInterval(watchProjector, 250);
 }
-// The slide out of the live view (the show window has the screen's shape, the slide sits inside).
-function liveShot() {
-  const v = $('live'), d = deckOf(show.path);
-  if (!d || !$('current').classList.contains('has-live') || !v.videoWidth || !v.videoHeight) return null;
+function watchProjector() {
+  if (!show.running || !remoteOn || show.state === 3 || show.state === 4) return;
+  const sig = projectorSignature();
+  if (sig == null) return;
+  if (sig !== shotSig) { shotSig = sig; shotDirty = true; }
+  if (!shotDirty || Date.now() - shotSentAt < 600) return;
+  const data = liveShot();
+  if (!data) return;
+  shotDirty = false; shotSentAt = Date.now();
+  LinkPage.send({ type: 'thumb', id: `live|${show.slide}|${show.click || 0}|${show.path}`, v: Date.now(), data });
+}
+// The slide's part of the live view (the show window has the screen's shape, the slide sits inside).
+function slideRect(v, d) {
   const vr = v.videoWidth / v.videoHeight, sr = d.width / d.height;
   let sw = v.videoWidth, sh = v.videoHeight, sx = 0, sy = 0;
   if (vr > sr) { sw = sh * sr; sx = (v.videoWidth - sw) / 2; } else if (vr < sr) { sh = sw / sr; sy = (v.videoHeight - sh) / 2; }
-  const w = Math.min(960, Math.round(sw)), h = Math.round(w / sr);
+  return { sx, sy, sw, sh, sr };
+}
+const liveReady = () => { const v = $('live'); return $('current').classList.contains('has-live') && v.videoWidth && v.videoHeight ? v : null; };
+// A tiny version of the projector's picture, to tell when it changed.
+const sigCanvas = document.createElement('canvas');
+sigCanvas.width = 32; sigCanvas.height = 18;
+function projectorSignature() {
+  const v = liveReady(), d = deckOf(show.path);
+  if (!v || !d) return null;
+  const r = slideRect(v, d), x = sigCanvas.getContext('2d', { willReadFrequently: true });
+  x.drawImage(v, r.sx, r.sy, r.sw, r.sh, 0, 0, 32, 18);
+  const px = x.getImageData(0, 0, 32, 18).data;
+  let s = '';
+  for (let i = 0; i < px.length; i += 4) s += String.fromCharCode(65 + ((px[i] + px[i + 1] + px[i + 2]) >> 5));
+  return s;
+}
+function liveShot() {
+  const v = liveReady(), d = deckOf(show.path);
+  if (!v || !d) return null;
+  const r = slideRect(v, d);
+  const w = Math.min(800, Math.round(r.sw)), h = Math.round(w / r.sr);
   const c = document.createElement('canvas');
   c.width = w; c.height = h;
-  c.getContext('2d').drawImage(v, sx, sy, sw, sh, 0, 0, w, h);
-  // A data channel message holds about 256 KB: a lighter picture when the slide is busy.
-  for (const q of [0.72, 0.55, 0.4]) { const data = c.toDataURL('image/jpeg', q); if (data.length < 200000 || q === 0.4) return data; }
+  c.getContext('2d').drawImage(v, r.sx, r.sy, r.sw, r.sh, 0, 0, w, h);
+  // Small, so it arrives fast (a data channel message holds about 256 KB at most).
+  for (const q of [0.7, 0.55, 0.4]) { const data = c.toDataURL('image/jpeg', q); if (data.length < 120000 || q === 0.4) return data; }
 }
 // What the phone can do with this version (a phone app newer or older than this one adapts).
 const REMOTE_CAPS = ['program', 'preview', 'back', 'screen', 'resume'];
