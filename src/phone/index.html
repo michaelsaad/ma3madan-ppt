@@ -129,7 +129,8 @@
   .or { margin: 4px 0 -4px !important; font-size: 13px; color: var(--muted); align-self: stretch; text-align: start; border-top: 1px solid var(--line); padding-top: 12px; }
   .approve-code { font: 700 44px ui-monospace, Consolas, monospace; letter-spacing: .18em; color: var(--gold); }
   .laptops button.add { color: var(--muted); }
-  .laptops button .more { font-style: normal; font-size: 18px; line-height: 1; padding: 4px 2px 8px 8px; margin-inline-end: -4px; color: var(--muted); }
+  .laptops button .more, .laptops button .ren { font-style: normal; font-size: 18px; line-height: 1; padding: 4px 2px 8px 8px; margin-inline-end: -4px; color: var(--muted); }
+  .laptops button .ren { font-size: 15px; padding: 4px 2px 6px 6px; margin-inline-end: 0; }
   .nearby-list button span small.apps { display: block; margin: 2px 0 0; font-size: 12px; font-weight: 400; color: var(--muted); }
   .note { margin: 0; padding: 10px 12px; border-radius: 10px; background: #2a2412; border: 1px solid #5a4a1a; color: #f3d98b; font-size: 13px; text-align: start; }
   /* ---------- Ma3madan PPT ---------- */
@@ -271,6 +272,8 @@
   .appswitch button.on { background: var(--accent); color: #fff; }
   /* the show pinned under the top bar */
   .pslide-main { max-height: 34vh; }
+  /* a thin black margin left and right, so the slide's edges aren't against the phone's edges */
+  body:not(.pfull) .pslide-main { width: calc(100% - 20px); margin: 4px 10px 0; border-radius: 4px; }
   .pstage-bar .ptimer { font-size: 12px; color: #c9d2e3; flex: none; }
   .pclick { min-height: 30px; min-width: 30px; width: 30px; height: 26px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: #5f6b82; flex: none; }
   .pclick svg { width: 17px; height: 17px; }

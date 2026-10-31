@@ -181,7 +181,7 @@ function pushRemote() {
 // they've gone (the slide pictures show the finished slide). The live view of the show is looked
 // at a few times a second; whenever the projector's picture changed (a step, an animation that
 // plays on by itself or after the previous one, a shape flying in for two seconds), the phone
-// gets the new picture — at most one every 0.6 s, and the last one once it has settled. Not while
+// gets the new picture (640 px, under 70 KB) — at most one every 0.8 s, and the last one once it has settled. Not while
 // it's black or white: the phone shows the slide then, with a band.
 // A phone with no direct path (on mobile data, say) gets everything through the room on the
 // internet, slower: then the pictures are smaller and fewer (once the projector settles, or every
@@ -201,7 +201,7 @@ function watchProjector() {
   const now = Date.now(), slow = link.phones?.some(p => p.route === 'relay');
   if (sig !== shotSig) { shotSig = sig; shotDirty = true; shotChangedAt = now; }
   if (!shotDirty) return;
-  if (slow ? !(now - shotChangedAt >= 400 && now - shotSentAt >= 1000 || now - shotSentAt >= 3000) : now - shotSentAt < 600) return;
+  if (slow ? !(now - shotChangedAt >= 400 && now - shotSentAt >= 1000 || now - shotSentAt >= 3000) : now - shotSentAt < 800) return;
   const data = slow ? liveShot(480, 35000) : liveShot();
   if (!data) return;
   shotDirty = false; shotSentAt = Date.now();
@@ -228,7 +228,7 @@ function projectorSignature() {
   for (let i = 0; i < px.length; i += 4) s += String.fromCharCode(65 + ((px[i] + px[i + 1] + px[i + 2]) >> 5));
   return s;
 }
-function liveShot(max = 800, limit = 120000) {
+function liveShot(max = 640, limit = 70000) {
   const v = liveReady(), d = deckOf(show.path);
   if (!v || !d) return null;
   const r = slideRect(v, d);

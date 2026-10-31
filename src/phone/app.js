@@ -33,7 +33,7 @@ const S = {
     karaoke: 'Karaoke', removeVocals: 'No vocals', separating: 'Separating… {n}%',
     speed: 'Speed', autoNext: 'Auto-play next', loop: 'Loop', subtitles: 'Subtitles', searchPh: 'Search videos',
     adding: 'Adding…', online: 'YouTube · online', dlFailed: 'Download failed', preparing: 'Preparing…',
-    retry: 'Try again', forget: 'Forget this computer', connectedTo: 'Connected to {n}', notConnected: 'Not connected',
+    retry: 'Try again', forget: 'Forget this computer', rename: 'Rename', renameQ: 'A name for this computer (on this phone). Leave it empty to use the computer’s own name.', connectedTo: 'Connected to {n}', notConnected: 'Not connected',
     viaRelay: 'through a relay', appClosed: '{a} isn’t open', appClosedTitle: '{a} isn’t open on {n}',
     appClosedText: 'Open it on the computer.',
     waitingTitle: 'Waiting for {n}…', waitingText: 'Turn the phone remote on in Ma3madan Play or Ma3madan PPT.',
@@ -85,7 +85,7 @@ const S = {
     karaoke: 'كاريوكي', removeVocals: 'إزالة الصوت', separating: 'جارٍ الفصل… {n}%',
     speed: 'السرعة', autoNext: 'تشغيل التالي تلقائيًا', loop: 'تكرار', subtitles: 'الترجمة', searchPh: 'ابحث في الفيديوهات',
     adding: 'جارٍ الإضافة…', online: 'يوتيوب · أونلاين', dlFailed: 'فشل التحميل', preparing: 'جارٍ التجهيز…',
-    retry: 'حاول مرة أخرى', forget: 'نسيان هذا الكمبيوتر', connectedTo: 'متصل بـ {n}', notConnected: 'غير متصل',
+    retry: 'حاول مرة أخرى', forget: 'نسيان هذا الكمبيوتر', rename: 'تغيير الاسم', renameQ: 'اسم لهذا الكمبيوتر (على هذا الموبايل). اتركه فارغًا لاستخدام اسم الكمبيوتر نفسه.', connectedTo: 'متصل بـ {n}', notConnected: 'غير متصل',
     viaRelay: 'عبر وسيط', appClosed: '{a} غير مفتوح', appClosedTitle: '{a} غير مفتوح على {n}',
     appClosedText: 'افتحه على الكمبيوتر.',
     waitingTitle: 'في انتظار {n}…', waitingText: 'شغّل ريموت الموبايل في «معمدان بلاي» أو «معمدان بي بي تي».',
@@ -263,7 +263,8 @@ async function dial(target, { quiet = false } = {}) {
           if (key && m.box) { try { body = await MaLink.unseal(key, m.box); } catch { return; } }
           if (body.type === 'answer' && typeof body.sdp === 'string' && !remoteSet) {
             remoteSet = true;
-            if (body.name && body.name !== c.name) { c.name = body.name; if (!c.temp) saveComputers(); }
+            if (body.name) c.own = body.name;
+            if (body.name && body.name !== c.name && !c.renamed) { c.name = body.name; if (!c.temp) saveComputers(); }
             await pc.setRemoteDescription({ type: 'answer', sdp: body.sdp });
             for (const x of early.splice(0)) pc.addIceCandidate(x).catch(() => {});
             if (target.nearby) {
@@ -329,7 +330,8 @@ function wireChannels(ctl, img, c, target, my) {
     if (m.type === 'pong') return;
     if (m.type === 'paired' && typeof m.key === 'string' && typeof m.deviceId === 'string') {
       // Trusted: this phone's own key for this computer, kept from now on.
-      const known = { hostId: m.hostId || c.hostId, deviceId: m.deviceId, key: m.key, name: m.name || c.name, at: Date.now() };
+      const old = computers.find(x => x.hostId === (m.hostId || c.hostId));
+      const known = { hostId: m.hostId || c.hostId, deviceId: m.deviceId, key: m.key, name: old?.renamed ? old.name : m.name || c.name, own: m.name || c.own, renamed: !!old?.renamed, at: Date.now() };
       computers = [known, ...computers.filter(x => x.hostId !== known.hostId)];
       saveComputers();
       try { localStorage.removeItem('laptops'); localStorage.removeItem('laptops-ppt'); } catch {}
@@ -341,7 +343,7 @@ function wireChannels(ctl, img, c, target, my) {
     if (m.type === 'denied') { setLinkState('denied'); linkClose(); return; }
     if (m.type === 'hello') {
       link.apps = Array.isArray(m.apps) ? m.apps : [];
-      if (m.name && link.current) link.current.name = m.name;
+      if (m.name && link.current) { link.current.own = m.name; if (!link.current.renamed) link.current.name = m.name; }
       if (ready) connected();
       return;
     }
@@ -386,6 +388,19 @@ setInterval(() => {
   linkSend({ type: 'ping' });
   if (!LAN && Date.now() - link.lastHeard > 9000 && link.current && !link.current.temp) dial({ computer: link.current }, { quiet: true });
 }, 4000);
+// A name of the user's own for a computer ("DESKTOP-4F7K2" → "Church laptop"), kept on this phone only.
+function renameComputer(c) {
+  if (!c) return;
+  const v = prompt(t('renameQ'), c.name);
+  if (v == null) return;
+  const name = v.trim().slice(0, 40);
+  if (name) { c.name = name; c.renamed = true; } else { c.renamed = false; if (c.own) c.name = c.own; }
+  for (const x of computers) if (x.hostId === c.hostId && x !== c) { x.name = c.name; x.renamed = c.renamed; }
+  if (link.current?.hostId === c.hostId) { link.current.name = c.name; link.current.renamed = c.renamed; }
+  saveComputers();
+  renderShell();
+  for (const v of Object.values(conns)) v.render();
+}
 function forgetComputer(c) {
   if (!c || !confirm(t('forgetQ', { n: c.name }))) return;
   computers = computers.filter(x => x !== c && x.hostId !== c.hostId);
@@ -480,10 +495,11 @@ function makeConn(kind, { onState, onThumb, failedText, pairTitle }) {
     const cur = link.current;
     box.innerHTML = computers.map((l, i) => {
       const on = cur && l.hostId === cur.hostId;
-      return `<button data-i="${i}" class="${on ? 'on' : ''}"><svg><use href="#i-laptop"/></svg><span dir="auto">${esc(l.name)}</span>${on ? `<i class="more" data-more="${i}" aria-label="${esc(t('forget'))}">⋯</i>` : ''}</button>`;
+      return `<button data-i="${i}" class="${on ? 'on' : ''}"><svg><use href="#i-laptop"/></svg><span dir="auto">${esc(l.name)}</span>${on ? `<i class="ren" data-ren="${i}" aria-label="${esc(t('rename'))}">✎</i><i class="more" data-more="${i}" aria-label="${esc(t('forget'))}">⋯</i>` : ''}</button>`;
     }).join('') + `<button class="add" data-add>+ ${esc(t('addComputer'))}</button>`;
     for (const b of box.querySelectorAll('button[data-i]')) b.onclick = e => {
       const l = computers[Number(b.dataset.i)];
+      if (e.target.closest('[data-ren]')) { renameComputer(l); return; }
       if (e.target.closest('[data-more]')) { forgetComputer(l); return; }
       if (!(link.current?.hostId === l.hostId && link.state === 'connected')) dial({ computer: l });
     };

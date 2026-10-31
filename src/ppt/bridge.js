@@ -11,13 +11,18 @@ const readline = require('readline');
 const here = __dirname.replace(/app\.asar([\\/])/, 'app.asar.unpacked$1');
 
 // Only ASCII crosses the pipe: everything else as \uXXXX (see host.js).
-const LOW = new Set(['thumbs']); // background work
+const LOW = new Set(['thumbs', 'exportOne']); // background work (slide pictures, the phone's sharp ones too)
+// Not something the operator did (the show's state is read a few times a second).
+const QUIET = new Set(['thumbs', 'exportOne', 'state', 'ping', 'find', 'monitor']);
+// Background work starts only this long after the operator's last tap: a batch of slide
+// pictures takes a second or more on a slow computer, and the next tap would wait behind it.
+const CALM_MS = 1500;
 const ascii = s => s.replace(/[\u007f-￿]/g, c => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
 
 class Helper {
   constructor(name, command, args) {
     this.name = name; this.command = command; this.args = args;
-    this.proc = null; this.pending = new Map(); this.nextId = 1; this.high = []; this.low = []; this.busy = false;
+    this.proc = null; this.pending = new Map(); this.nextId = 1; this.high = []; this.low = []; this.busy = false; this.lastTap = 0; this.calmTimer = null;
   }
   start() {
     const p = spawn(this.command, this.args, { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
@@ -41,12 +46,19 @@ class Helper {
   // operator did is waiting, so a tap never queues behind a batch of thumbnails.
   call(cmd, ...args) {
     return new Promise((resolve, reject) => {
+      if (!QUIET.has(cmd)) this.lastTap = Date.now();
       (LOW.has(cmd) ? this.low : this.high).push({ cmd, args, resolve, reject });
       this.pump();
     });
   }
   pump() {
     if (this.busy) return;
+    const wait = this.lastTap + CALM_MS - Date.now();
+    if (!this.high.length && this.low.length && wait > 0) {
+      clearTimeout(this.calmTimer);
+      this.calmTimer = setTimeout(() => this.pump(), wait);
+      return;
+    }
     const job = this.high.shift() || this.low.shift();
     if (!job) return;
     this.busy = true;
