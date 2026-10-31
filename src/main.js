@@ -135,13 +135,13 @@ async function readDeck(file) {
   if (/\.(pptx|ppsx|pptm|ppsm)$/i.test(file)) { try { info = slideLinks.describe(file); } catch (e) { console.warn('describe', e.message); } }
   if (!info) info = await ppt.open(file);
   const dir = thumbsDirFor(file);
-  const d = { info, dir, ready: 0 };
+  const d = { key: k, info, dir, ready: 0, extra: new Set() };
   decks.set(k, d);
   touchRecent(file, info.name);
   makeThumbs(d); // in the background; the grid fills in as they come
   return deckPayload(d);
 }
-const deckPayload = d => ({ ...d.info, thumbs: pathToFileURL(d.dir).href + '/', ready: d.ready });
+const deckPayload = d => ({ ...d.info, thumbs: pathToFileURL(d.dir).href + '/', ready: d.ready, extra: [...d.extra] });
 
 async function makeThumbs(d) {
   const n = d.info.slides.length;
@@ -155,7 +155,13 @@ async function makeThumbs(d) {
   const w = 480, h = Math.round(w * d.info.height / d.info.width);
   for (let from = 1; from <= n; from += 2) {
     const to = Math.min(n, from + 1);
-    try { await ppt.thumbs(d.info.path, d.dir, w, h, from, to); } catch (e) { console.warn('thumbs', e.message); return; }
+    // A slow or busy computer: the same pictures again a little later, never given up on (the
+    // next slide's preview needs them; before, one failure stopped them until a restart).
+    for (let tries = 0; ; tries++) {
+      if (decks.get(d.key) !== d) return; // closed meanwhile
+      try { await ppt.thumbs(d.info.path, d.dir, w, h, from, to); break; } catch (e) { console.warn('thumbs', e.message); }
+      await new Promise(r => setTimeout(r, [2000, 5000, 15000][tries] || 30000));
+    }
     d.ready = to;
     controlWin?.webContents.send('thumbs', { path: d.info.path, ready: to });
   }
@@ -535,10 +541,23 @@ ipcMain.handle('qr-svg', (_e, text) => {
 ipcMain.handle('host-name', () => require('os').hostname());
 // A phone asks to connect: the taskbar button blinks until the window is looked at.
 ipcMain.on('flash-window', () => { if (controlWin && !controlWin.isFocused()) controlWin.flashFrame(true); });
+// The slide on screen and the next one are needed now: made out of turn when the pictures haven't
+// got that far yet (a big presentation on a slow computer, a jump far into it).
+ipcMain.handle('thumb-need', async (_e, file, list) => {
+  const d = decks.get(String(file).toLowerCase());
+  if (!d || !Array.isArray(list)) return;
+  const w = 480, h = Math.round(w * d.info.height / d.info.width);
+  for (const n of list.slice(0, 3)) {
+    if (!(n >= 1 && n <= d.info.slides.length) || n <= d.ready || d.extra.has(n)) continue;
+    d.extra.add(n); // asked for once at a time
+    try { await ppt.exportOne(d.info.path, n, path.join(d.dir, `${n}.png`), w, h); } catch (e) { d.extra.delete(n); console.warn('thumb-need', e.message); continue; }
+    controlWin?.webContents.send('thumbs', { path: d.info.path, ready: d.ready, extra: [...d.extra] });
+  }
+});
 // A slide's picture for the phone: a small JPEG as a data URL (it travels over the data channel).
 ipcMain.handle('thumb-data', async (_e, file, n, width) => {
   const d = decks.get(String(file).toLowerCase());
-  if (!d || !(n >= 1 && n <= d.ready)) return null;
+  if (!d || !(n >= 1 && (n <= d.ready || d.extra.has(n)))) return null;
   // Big ones (the phone's live slide) are made sharp, once per slide, at 1280 px.
   let src = path.join(d.dir, `${n}.png`);
   if (width > 480) {

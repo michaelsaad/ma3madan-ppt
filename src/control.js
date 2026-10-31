@@ -26,7 +26,7 @@ try { localStorage.removeItem('collapsedSections'); } catch {}
 const deckOf = p => open.find(d => same(d.path, p));
 const activeDeck = () => deckOf(active);
 const isLive = d => show.running && d && same(show.path, d.path);
-const thumbUrl = (d, n) => (d && n <= d.ready ? `${d.thumbs}${n}.png` : '');
+const thumbUrl = (d, n) => (d && (n <= d.ready || d.extra?.includes(n)) ? `${d.thumbs}${n}.png` : '');
 
 // ---------- toast ----------
 let toastTimer;
@@ -588,8 +588,10 @@ const customShowOf = d => (show.named && d.customShows?.find(c => c.name === sho
 function nextSlideOf(d, n) {
   const cs = customShowOf(d);
   if (cs) { const i = cs.slides.indexOf(n); return i + 1 < cs.slides.length ? cs.slides[i + 1] : 0; }
+  // PowerPoint skips hidden slides, except from a hidden slide (reached by a link or a button):
+  // then it goes on to the one right after it, hidden or not.
   let m = n + 1;
-  while (m <= d.slides.length && d.slides[m - 1].hidden) m++;
+  if (!d.slides[n - 1]?.hidden) while (m <= d.slides.length && d.slides[m - 1].hidden) m++;
   return m <= d.slides.length ? m : 0;
 }
 
@@ -620,7 +622,7 @@ function renderPresenter() {
     $('nextEnd').hidden = true;
   } else if (nextN) {
     $('nextImg').src = thumbUrl(d, nextN);
-    $('nextInfo').textContent = t('slideN', { n: nextN });
+    $('nextInfo').textContent = '';
     $('nextEnd').hidden = true;
   } else {
     $('nextImg').removeAttribute('src');
@@ -628,6 +630,9 @@ function renderPresenter() {
     $('nextEnd').textContent = customShowOf(d) ? t('endOfNamed') : t('endOfShow');
     $('nextEnd').hidden = false;
   }
+  // Pictures not made yet (a big presentation on a slow computer): these two first.
+  const missing = [n, nextN].filter(x => x && !thumbUrl(d, x));
+  if (missing.length) api.thumbNeed(d.path, missing);
   $('notes').textContent = slide?.notes || '';
   $('notes').dataset.empty = t('noNotes');
   renderStrip(d);
@@ -999,10 +1004,11 @@ api.onDeckOpened(d => {
   api.loadLibrary().then(lib => { library = lib; render(); });
 });
 api.onNotice(n => toast(t(n.key, n)));
-api.onThumbs(({ path: p, ready }) => {
+api.onThumbs(({ path: p, ready, extra }) => {
   const d = deckOf(p);
   if (!d) return;
   d.ready = ready;
+  if (Array.isArray(extra)) d.extra = extra;
   if (ready >= 1) rememberThumb(d);
   if (same(p, active)) { if (isLive(d)) { stripKey = ''; renderPresenter(); } else renderDeck(); renderSections(); }
   if (ready === 1 || ready === d.slides.length) { renderLibrary(); }

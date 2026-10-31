@@ -43,6 +43,7 @@ contextBridge.exposeInMainWorld('api', {
   qrSvg: text => ipcRenderer.invoke('qr-svg', text),
   hostName: () => ipcRenderer.invoke('host-name'),
   thumbData: (p, n, w) => ipcRenderer.invoke('thumb-data', p, n, w),
+  thumbNeed: (p, list) => ipcRenderer.invoke('thumb-need', p, list),
   flashWindow: () => ipcRenderer.send('flash-window'),
   // the phone link shared with Ma3madan Play (hub.js, link-page.js): only these channels
   link: {

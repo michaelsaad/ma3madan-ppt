@@ -34,6 +34,9 @@ module.exports = async function selftest(win, { app, ppt }) {
     assert.deepStrictEqual(secs, ['Opening', 'Sermon', 'Hymns']);
     assert.strictEqual(await js('document.querySelectorAll("#grid .card").length'), 7);
     await shot('1-deck');
+    // Next slide: hidden ones are skipped, except from a hidden one (a link took the show there).
+    assert.deepStrictEqual(await js(`(() => { const d = { slides: [{}, { hidden: 1 }, { hidden: 1 }, {}, {}] };
+      return [nextSlideOf(d, 1), nextSlideOf(d, 2), nextSlideOf(d, 3), nextSlideOf(d, 5)]; })()`), [4, 3, 4, 0]);
     log('deck view ok');
     if (process.env.MP_NARROW) {
       // Too small for both panels: the sections float over the middle, opened by their button.
